@@ -273,7 +273,10 @@ export default function ForecastingPage() {
 
   const sapSafetyStock = useMemo(() => {
     if (historicalSales.length === 0) return 500;
-    return calculateStatisticalSafetyStock(historicalSales, currentMaterialObj.leadTimeDays || 14, currentMaterialObj.serviceLevel || 0.95);
+    const avg = historicalSales.reduce((a, b) => a + b, 0) / historicalSales.length;
+    const variance = historicalSales.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / historicalSales.length;
+    const stdDev = Math.sqrt(variance);
+    return calculateStatisticalSafetyStock(avg, stdDev, currentMaterialObj.leadTimeDays || 14, currentMaterialObj.serviceLevel || 0.95);
   }, [historicalSales, currentMaterialObj]);
 
   const sapRop = useMemo(() => {

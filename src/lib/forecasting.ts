@@ -1,5 +1,9 @@
 // Advanced Forecasting Engine for S&OP
-// Implements multiple forecasting algorithms and statistical analysis
+// Implements multiple forecasting algorithms, ABC analysis, and inventory ageing
+
+// ============================================
+// Interfaces
+// ============================================
 
 export interface InventoryRecord {
   materialId: string;
@@ -9,6 +13,8 @@ export interface InventoryRecord {
   actualSales: number;
   forecastDemand: number;
   safetyStock: number;
+  priceUSD?: number;
+  category?: string;
 }
 
 export interface ForecastResult extends InventoryRecord {
@@ -20,6 +26,40 @@ export interface ForecastResult extends InventoryRecord {
   forecastError: number;
   bias: number;
   mape: number;
+  // New fields
+  stockCoverageMonths: number;
+  avgMonthlySales: number;
+  avgMonthlySalesValue: number;
+  monthOutOfStock: number;
+  monthOutOfStockValue: number;
+  abcClassification: 'A' | 'B' | 'C';
+  totalStockUnits: number;
+  totalStockValue: number;
+}
+
+export interface ABCAnalysisResult {
+  materialId: string;
+  materialName: string;
+  totalSalesValue: number;
+  salesValueContribution: number;
+  cumulativeContribution: number;
+  classification: 'A' | 'B' | 'C';
+  category: string;
+  avgMonthlySales: number;
+  avgMonthlySalesValue: number;
+  currentStock: number;
+  stockCoverageMonths: number;
+  isOutOfStock: boolean;
+  riskLevel: 'high' | 'medium' | 'low';
+  // Additional KPIs
+  forecastAccuracy: number;
+  stockOutGapUnits: number;
+  stockOutGapValue: number;
+  // Inventory ageing
+  inventoryAgeDays: number;
+  inventoryAgeStatus: 'good' | 'slow' | 'bad';
+  batchDate?: string;
+  expiryDate?: string;
 }
 
 export interface ForecastMetrics {
@@ -48,46 +88,144 @@ export interface ForecastScenario {
 }
 
 // ============================================
-// Core Inventory Calculations & SAP Formulas
+// Configurable Inventory Ageing Buckets
+// Master-driven configuration
 // ============================================
 
-export const Z_SCORES: Record<number, number> = {
-  0.90: 1.28,
-  0.95: 1.645,
-  0.98: 2.05,
-  0.99: 2.33,
+export interface InventoryAgeConfig {
+  good: { min: number; max: number; label: string; color: string };
+  slow: { min: number; max: number; label: string; color: string };
+  bad: { min: number; max: number | null; label: string; color: string };
+}
+
+// Default configuration (can be overridden via settings)
+export const DEFAULT_AGE_CONFIG: InventoryAgeConfig = {
+  good: { min: 0, max: 180, label: 'Good', color: '#10b981' }, // 0-6 months
+  slow: { min: 180, max: 365, label: 'Slow Moving', color: '#f59e0b' }, // 6-12 months
+  bad: { min: 365, max: null, label: 'Bad Inventory', color: '#ef4444' }, // 12+ months
 };
 
+// Alternative configurations for different industries
+export const AGE_CONFIG_PRESETS: Record<string, InventoryAgeConfig> = {
+  default: DEFAULT_AGE_CONFIG,
+  fmcg: {
+    good: { min: 0, max: 90, label: 'Good', color: '#10b981' }, // 0-3 months
+    slow: { min: 90, max: 180, label: 'Slow Moving', color: '#f59e0b' }, // 3-6 months
+    bad: { min: 180, max: null, label: 'Bad Inventory', color: '#ef4444' }, // 6+ months
+  },
+  pharmaceutical: {
+    good: { min: 0, max: 365, label: 'Good', color: '#10b981' }, // 0-12 months
+    slow: { min: 365, max: 545, label: 'Slow Moving', color: '#f59e0b' }, // 12-18 months
+    bad: { min: 545, max: null, label: 'Near Expiry', color: '#ef4444' }, // 18+ months
+  },
+  electronics: {
+    good: { min: 0, max: 365, label: 'Good', color: '#10b981' }, // 0-12 months
+    slow: { min: 365, max: 730, label: 'Slow Moving', color: '#f59e0b' }, // 12-24 months
+    bad: { min: 730, max: null, label: 'Obsolete', color: '#ef4444' }, // 24+ months
+  },
+  automotive: {
+    good: { min: 0, max: 730, label: 'Good', color: '#10b981' }, // 0-24 months
+    slow: { min: 730, max: 1095, label: 'Slow Moving', color: '#f59e0b' }, // 24-36 months
+    bad: { min: 1095, max: null, label: 'Obsolete', color: '#ef4444' }, // 36+ months
+  },
+};
+
+// Current age configuration (can be changed at runtime)
+let currentAgeConfig: InventoryAgeConfig = { ...DEFAULT_AGE_CONFIG };
+
 /**
- * Calculate standard deviation for a set of numbers
+ * Set the inventory age configuration
  */
-export function calculateStandardDeviation(values: number[]): number {
-  if (values.length === 0) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
-  return Math.sqrt(variance);
+export function setInventoryAgeConfig(config: InventoryAgeConfig | string): void {
+  if (typeof config === 'string') {
+    currentAgeConfig = AGE_CONFIG_PRESETS[config] || DEFAULT_AGE_CONFIG;
+  } else {
+    currentAgeConfig = config;
+  }
 }
 
 /**
- * SAP Standard Statistical Safety Stock
- * SS = Z * sqrt(LeadTime) * standardDeviation(Demand)
+ * Get the current inventory age configuration
  */
-export function calculateStatisticalSafetyStock(
-  historicalDemand: number[],
-  leadTimeDays: number,
-  serviceLevel: number = 0.95
-): number {
-  const zScore = Z_SCORES[serviceLevel] || 1.645;
-  const stdDevDemand = calculateStandardDeviation(historicalDemand);
-  const leadTimeMonths = Math.max(0.1, leadTimeDays / 30);
-  return Math.round(zScore * Math.sqrt(leadTimeMonths) * stdDevDemand);
+export function getInventoryAgeConfig(): InventoryAgeConfig {
+  return { ...currentAgeConfig };
 }
+
+/**
+ * Calculate inventory age status based on age in days
+ */
+export function calculateInventoryAgeStatus(ageDays: number): 'good' | 'slow' | 'bad' {
+  if (ageDays >= currentAgeConfig.bad.min) return 'bad';
+  if (ageDays >= currentAgeConfig.slow.min) return 'slow';
+  return 'good';
+}
+
+/**
+ * Calculate inventory age in days from batch date
+ */
+export function calculateInventoryAge(batchDate: string | Date): number {
+  const batch = new Date(batchDate);
+  const today = new Date();
+  const diffTime = today.getTime() - batch.getTime();
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Get age bucket label and color
+ */
+export function getAgeBucketInfo(ageDays: number): { label: string; color: string; status: 'good' | 'slow' | 'bad' } {
+  const status = calculateInventoryAgeStatus(ageDays);
+  const config = currentAgeConfig[status];
+  return { label: config.label, color: config.color, status };
+}
+
+// ============================================
+// Core Inventory Calculations
+// ============================================
 
 /**
  * Closing Stock = Opening Stock + Stock in Transit – Actual Sales
  */
 export function calculateClosingStock(openingStock: number, stockInTransit: number, actualSales: number): number {
   return Math.max(0, openingStock + stockInTransit - actualSales);
+}
+
+/**
+ * Total Stock Units = Opening Stock + Stock in Transit
+ */
+export function calculateTotalStockUnits(openingStock: number, stockInTransit: number): number {
+  return openingStock + stockInTransit;
+}
+
+/**
+ * Total Stock Value = Total Stock Units × Price per Unit
+ */
+export function calculateTotalStockValue(totalStockUnits: number, priceUSD: number): number {
+  return totalStockUnits * priceUSD;
+}
+
+/**
+ * Average Monthly Sales Units
+ */
+export function calculateAvgMonthlySales(historicalSales: number[]): number {
+  if (historicalSales.length === 0) return 0;
+  return Math.round(historicalSales.reduce((a, b) => a + b, 0) / historicalSales.length);
+}
+
+/**
+ * Average Monthly Sales Value
+ */
+export function calculateAvgMonthlySalesValue(historicalSales: number[], priceUSD: number): number {
+  const avgUnits = calculateAvgMonthlySales(historicalSales);
+  return avgUnits * priceUSD;
+}
+
+/**
+ * Stock Coverage (Months) = Total Stock Units / Avg Monthly Sales Units
+ */
+export function calculateStockCoverageMonths(totalStockUnits: number, avgMonthlySales: number): number {
+  if (avgMonthlySales === 0) return 999;
+  return parseFloat((totalStockUnits / avgMonthlySales).toFixed(2));
 }
 
 /**
@@ -105,6 +243,37 @@ export function calculateReplenishment(forecastDemand: number, safetyStock: numb
 export function calculateForecastAccuracy(actual: number, forecast: number): number {
   if (actual === 0) return forecast === 0 ? 100 : 0;
   return Math.max(0, Math.min(100, (1 - Math.abs(actual - forecast) / actual) * 100));
+}
+
+/**
+ * Stock Out Gap (Units) = Forecast Units - Available Stock Units
+ * Positive value means shortage, negative means surplus
+ */
+export function calculateStockOutGapUnits(forecastDemand: number, availableStock: number): number {
+  return forecastDemand - availableStock;
+}
+
+/**
+ * Stock Out Gap (Value) = Stock Out Gap Units × Price per Unit
+ */
+export function calculateStockOutGapValue(forecastDemand: number, availableStock: number, priceUSD: number): number {
+  const gap = calculateStockOutGapUnits(forecastDemand, availableStock);
+  return gap * priceUSD;
+}
+
+/**
+ * Month Out of Stock (Units) = Forecast Units - Available Stock Units
+ * Alias for calculateStockOutGapUnits
+ */
+export function calculateMonthOutOfStock(forecastDemand: number, availableStock: number): number {
+  return calculateStockOutGapUnits(forecastDemand, availableStock);
+}
+
+/**
+ * Month Out of Stock (Value) = Forecast Value - Available Stock Value
+ */
+export function calculateMonthOutOfStockValue(forecastDemand: number, availableStock: number, priceUSD: number): number {
+  return calculateStockOutGapValue(forecastDemand, availableStock, priceUSD);
 }
 
 /**
@@ -149,33 +318,216 @@ export function calculateBias(actuals: number[], forecasts: number[]): number {
 export function calculateTrackingSignal(actuals: number[], forecasts: number[]): number {
   if (actuals.length < 2) return 0;
   const errors = actuals.map((actual, i) => actual - forecasts[i]);
+  const mad = errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length;
+  if (mad === 0) return 0;
   const runningSum = errors.reduce((a, b) => a + b, 0);
-  const absErrors = errors.map(e => Math.abs(e));
-  const mad = absErrors.reduce((a, b) => a + b, 0) / absErrors.length;
-  return mad !== 0 ? runningSum / mad : 0;
+  return runningSum / mad;
 }
 
 /**
- * Stock Coverage = Current Inventory / Average Daily Sales (assumes 30-day month)
+ * Calculate stock coverage in days
  */
-export function calculateStockCoverage(currentStock: number, monthlySales: number): number {
-  const dailySales = monthlySales / 30;
-  if (dailySales === 0) return 999;
-  return Math.round(currentStock / dailySales);
+export function calculateStockCoverage(closingStock: number, avgDailyDemand: number): number {
+  if (avgDailyDemand === 0) return 999;
+  return Math.round(closingStock / avgDailyDemand);
 }
 
 /**
- * Stockout Risk Probability based on coverage and safety stock
+ * Calculate stockout risk percentage
  */
 export function calculateStockoutRisk(closingStock: number, safetyStock: number, forecastDemand: number): number {
   if (closingStock <= 0) return 100;
-  if (closingStock >= forecastDemand + safetyStock) return 0;
-  const ratio = closingStock / (forecastDemand + safetyStock);
-  if (ratio < 0.3) return 85;
-  if (ratio < 0.5) return 60;
-  if (ratio < 0.7) return 35;
-  if (ratio < 0.9) return 15;
-  return 5;
+  if (closingStock <= safetyStock) return 75;
+  if (closingStock < forecastDemand) return 50;
+  return Math.max(0, (1 - closingStock / (forecastDemand * 1.5)) * 100);
+}
+
+/**
+ * Calculate statistical safety stock based on service level
+ */
+export function calculateStatisticalSafetyStock(
+  avgDemand: number,
+  demandStdDev: number,
+  leadTime: number,
+  serviceLevel: number = 0.95
+): number {
+  // Z-score for given service level (95% = 1.645, 99% = 2.326)
+  const zScores: Record<number, number> = {
+    0.80: 0.84,
+    0.85: 1.04,
+    0.90: 1.28,
+    0.95: 1.645,
+    0.98: 2.05,
+    0.99: 2.33,
+  };
+  const z = zScores[serviceLevel] || 1.645;
+  
+  // Safety Stock = Z × √(Lead Time) × Standard Deviation of Demand
+  return Math.round(z * Math.sqrt(leadTime) * demandStdDev);
+}
+
+// ============================================
+// ABC Analysis Functions
+// ============================================
+
+export interface MaterialForABC {
+  id: string;
+  description: string;
+  priceUSD: number;
+  category: string;
+  historicalSales: number[];
+  historicalForecasts?: number[];
+  currentStock: number;
+  batchDate?: string;
+  expiryDate?: string;
+  forecastDemand?: number;
+}
+
+/**
+ * Perform ABC Analysis on materials based on sales value
+ * A = Top 80% of total sales value
+ * B = Next 15% of total sales value
+ * C = Bottom 5% of total sales value
+ */
+export function performABCAnalysis(materials: MaterialForABC[]): ABCAnalysisResult[] {
+  // Calculate metrics for each material
+  const materialsWithMetrics = materials.map(mat => {
+    const totalSalesUnits = mat.historicalSales.reduce((a, b) => a + b, 0);
+    const totalSalesValue = totalSalesUnits * mat.priceUSD;
+    const avgMonthlySales = mat.historicalSales.length > 0 
+      ? Math.round(totalSalesUnits / mat.historicalSales.length) 
+      : 0;
+    const avgMonthlySalesValue = avgMonthlySales * mat.priceUSD;
+    const stockCoverageMonths = calculateStockCoverageMonths(mat.currentStock, avgMonthlySales);
+    
+    // Calculate forecast accuracy if we have forecast data
+    let forecastAccuracy = 100;
+    if (mat.historicalForecasts && mat.historicalForecasts.length > 0) {
+      const actuals = mat.historicalSales.filter(s => s > 0);
+      const forecasts = mat.historicalForecasts.slice(0, actuals.length);
+      if (actuals.length > 0 && forecasts.length > 0) {
+        forecastAccuracy = 100 - calculateMAPE(actuals, forecasts);
+      }
+    }
+    
+    // Calculate stock out gap
+    const currentForecast = mat.forecastDemand || avgMonthlySales;
+    const stockOutGapUnits = calculateStockOutGapUnits(currentForecast, mat.currentStock);
+    const stockOutGapValue = calculateStockOutGapValue(currentForecast, mat.currentStock, mat.priceUSD);
+    
+    // Calculate inventory age
+    const inventoryAgeDays = mat.batchDate ? calculateInventoryAge(mat.batchDate) : 0;
+    const inventoryAgeStatus = calculateInventoryAgeStatus(inventoryAgeDays);
+    
+    return {
+      materialId: mat.id,
+      materialName: mat.description,
+      totalSalesValue,
+      salesValueContribution: 0, // Will be calculated
+      cumulativeContribution: 0, // Will be calculated
+      classification: 'C' as 'A' | 'B' | 'C',
+      category: mat.category,
+      avgMonthlySales,
+      avgMonthlySalesValue,
+      currentStock: mat.currentStock,
+      stockCoverageMonths,
+      isOutOfStock: mat.currentStock <= 0,
+      riskLevel: (stockCoverageMonths < 1 ? 'high' : stockCoverageMonths < 2 ? 'medium' : 'low') as 'high' | 'medium' | 'low',
+      forecastAccuracy,
+      stockOutGapUnits,
+      stockOutGapValue,
+      inventoryAgeDays,
+      inventoryAgeStatus,
+      batchDate: mat.batchDate,
+      expiryDate: mat.expiryDate,
+    };
+  });
+
+  // Sort by total sales value (descending)
+  materialsWithMetrics.sort((a, b) => b.totalSalesValue - a.totalSalesValue);
+
+  // Calculate total sales value across all materials
+  const grandTotalSalesValue = materialsWithMetrics.reduce((sum, m) => sum + m.totalSalesValue, 0);
+
+  // Calculate contribution percentages and classify
+  let cumulativeValue = 0;
+  const results: ABCAnalysisResult[] = materialsWithMetrics.map(mat => {
+    cumulativeValue += mat.totalSalesValue;
+    const contribution = grandTotalSalesValue > 0 ? (mat.totalSalesValue / grandTotalSalesValue) * 100 : 0;
+    const cumulative = grandTotalSalesValue > 0 ? (cumulativeValue / grandTotalSalesValue) * 100 : 0;
+    
+    // Classify based on cumulative contribution
+    let classification: 'A' | 'B' | 'C' = 'C';
+    if (cumulative <= 80) {
+      classification = 'A';
+    } else if (cumulative <= 95) {
+      classification = 'B';
+    } else {
+      classification = 'C';
+    }
+
+    return {
+      ...mat,
+      salesValueContribution: parseFloat(contribution.toFixed(2)),
+      cumulativeContribution: parseFloat(cumulative.toFixed(2)),
+      classification,
+    };
+  });
+
+  return results;
+}
+
+export interface ABCSummary {
+  a: { count: number; totalValue: number; outOfStock: number; atRisk: number; avgCoverage: number; };
+  b: { count: number; totalValue: number; outOfStock: number; atRisk: number; avgCoverage: number; };
+  c: { count: number; totalValue: number; outOfStock: number; atRisk: number; avgCoverage: number; };
+  lowCoverage: { count: number; items: Array<{ sku: string; name: string; category: string; coverage: number }> };
+}
+
+/**
+ * Get ABC summary statistics
+ */
+export function getABCSummary(abcResults: ABCAnalysisResult[]): ABCSummary {
+  const aItems = abcResults.filter(r => r.classification === 'A');
+  const bItems = abcResults.filter(r => r.classification === 'B');
+  const cItems = abcResults.filter(r => r.classification === 'C');
+
+  const lowCoverageItems = abcResults
+    .filter(r => r.stockCoverageMonths < 1)
+    .map(r => ({
+      sku: r.materialId,
+      name: r.materialName,
+      category: r.category,
+      coverage: r.stockCoverageMonths,
+    }));
+
+  return {
+    a: {
+      count: aItems.length,
+      totalValue: aItems.reduce((sum, r) => sum + r.totalSalesValue, 0),
+      outOfStock: aItems.filter(r => r.isOutOfStock).length,
+      atRisk: aItems.filter(r => !r.isOutOfStock && r.stockCoverageMonths < 1).length,
+      avgCoverage: aItems.length > 0 ? aItems.reduce((sum, r) => sum + r.stockCoverageMonths, 0) / aItems.length : 0,
+    },
+    b: {
+      count: bItems.length,
+      totalValue: bItems.reduce((sum, r) => sum + r.totalSalesValue, 0),
+      outOfStock: bItems.filter(r => r.isOutOfStock).length,
+      atRisk: bItems.filter(r => !r.isOutOfStock && r.stockCoverageMonths < 1).length,
+      avgCoverage: bItems.length > 0 ? bItems.reduce((sum, r) => sum + r.stockCoverageMonths, 0) / bItems.length : 0,
+    },
+    c: {
+      count: cItems.length,
+      totalValue: cItems.reduce((sum, r) => sum + r.totalSalesValue, 0),
+      outOfStock: cItems.filter(r => r.isOutOfStock).length,
+      atRisk: cItems.filter(r => !r.isOutOfStock && r.stockCoverageMonths < 1).length,
+      avgCoverage: cItems.length > 0 ? cItems.reduce((sum, r) => sum + r.stockCoverageMonths, 0) / cItems.length : 0,
+    },
+    lowCoverage: {
+      count: lowCoverageItems.length,
+      items: lowCoverageItems,
+    },
+  };
 }
 
 // ============================================
@@ -392,12 +744,28 @@ export function generateForecast(
 /**
  * Process full inventory record through the forecasting engine
  */
-export function processInventoryRecord(record: InventoryRecord): ForecastResult {
+export function processInventoryRecord(
+  record: InventoryRecord,
+  historicalSales: number[] = []
+): ForecastResult {
   const closingStock = calculateClosingStock(record.openingStock, record.stockInTransit, record.actualSales);
   const replenishmentQty = calculateReplenishment(record.forecastDemand, record.safetyStock, closingStock);
   const forecastAccuracy = calculateForecastAccuracy(record.actualSales, record.forecastDemand);
-  const stockCoverageDays = calculateStockCoverage(closingStock, record.actualSales || record.forecastDemand);
+  const avgDailyDemand = (record.actualSales || record.forecastDemand) / 30;
+  const stockCoverageDays = calculateStockCoverage(closingStock, avgDailyDemand);
   const stockoutRisk = calculateStockoutRisk(closingStock, record.safetyStock, record.forecastDemand);
+  
+  // Calculate new metrics
+  const totalStockUnits = calculateTotalStockUnits(record.openingStock, record.stockInTransit);
+  const totalStockValue = calculateTotalStockValue(totalStockUnits, record.priceUSD || 0);
+  const avgMonthlySales = calculateAvgMonthlySales(historicalSales.length > 0 ? historicalSales : [record.actualSales || record.forecastDemand]);
+  const avgMonthlySalesValue = calculateAvgMonthlySalesValue(
+    historicalSales.length > 0 ? historicalSales : [record.actualSales || record.forecastDemand],
+    record.priceUSD || 0
+  );
+  const stockCoverageMonths = calculateStockCoverageMonths(totalStockUnits, avgMonthlySales);
+  const monthOutOfStock = calculateMonthOutOfStock(record.forecastDemand, totalStockUnits);
+  const monthOutOfStockValue = calculateMonthOutOfStockValue(record.forecastDemand, totalStockUnits, record.priceUSD || 0);
   
   // Additional metrics
   const forecastError = record.actualSales > 0 ? record.forecastDemand - record.actualSales : 0;
@@ -414,6 +782,15 @@ export function processInventoryRecord(record: InventoryRecord): ForecastResult 
     forecastError,
     bias,
     mape,
+    // New fields
+    stockCoverageMonths,
+    avgMonthlySales,
+    avgMonthlySalesValue,
+    monthOutOfStock,
+    monthOutOfStockValue,
+    abcClassification: 'C', // Will be set by ABC analysis
+    totalStockUnits,
+    totalStockValue,
   };
 }
 
@@ -448,20 +825,21 @@ export function whatIfScenario(
   record: InventoryRecord,
   demandAdjustment: number = 0,
   safetyStockAdjustment: number = 0,
-  _leadTimeAdjustment: number = 0
+  leadTimeAdjustment: number = 0,
+  historicalSales: number[] = []
 ): ForecastResult {
   const adjustedRecord: InventoryRecord = {
     ...record,
     forecastDemand: Math.round(record.forecastDemand * (1 + demandAdjustment / 100)),
     safetyStock: Math.round(record.safetyStock * (1 + safetyStockAdjustment / 100)),
   };
-  return processInventoryRecord(adjustedRecord);
+  return processInventoryRecord(adjustedRecord, historicalSales);
 }
 
 /**
  * Generate multiple scenarios for comparison
  */
-export function generateScenarios(_baseRecord: InventoryRecord): ForecastScenario[] {
+export function generateScenarios(baseRecord: InventoryRecord, historicalSales: number[] = []): ForecastScenario[] {
   return [
     {
       id: 'optimistic',
@@ -503,40 +881,6 @@ export function generateScenarios(_baseRecord: InventoryRecord): ForecastScenari
 }
 
 /**
- * ABC Analysis for inventory classification
- */
-export function abcAnalysis(items: { id: string; value: number }[]): {
-  a: string[];
-  b: string[];
-  c: string[];
-  thresholds: { a: number; b: number };
-} {
-  const sorted = [...items].sort((a, b) => b.value - a.value);
-  const totalValue = items.reduce((sum, item) => sum + item.value, 0);
-  
-  let cumulativeValue = 0;
-  const a: string[] = [];
-  const b: string[] = [];
-  const c: string[] = [];
-  
-  for (const item of sorted) {
-    cumulativeValue += item.value;
-    const percentage = cumulativeValue / totalValue;
-    
-    if (percentage <= 0.8) a.push(item.id);
-    else if (percentage <= 0.95) b.push(item.id);
-    else c.push(item.id);
-  }
-  
-  return {
-    a,
-    b,
-    c,
-    thresholds: { a: 0.8, b: 0.95 },
-  };
-}
-
-/**
  * Calculate economic order quantity (EOQ)
  */
 export function calculateEOQ(
@@ -546,152 +890,6 @@ export function calculateEOQ(
 ): number {
   if (holdingCostPerUnit <= 0) return 0;
   return Math.round(Math.sqrt((2 * annualDemand * orderingCost) / holdingCostPerUnit));
-}
-
-/**
- * Alias: exponentialSmoothingForecast — returns the next single period forecast
- */
-export function exponentialSmoothingForecast(historicalSales: number[], alpha: number = 0.3): number {
-  return exponentialSmoothing(historicalSales, alpha);
-}
-
-/**
- * Alias: linearTrendForecast — wrapper around linearRegressionForecast
- */
-export function linearTrendForecast(historicalSales: number[], periodsAhead: number = 1): number {
-  return linearRegressionForecast(historicalSales, periodsAhead);
-}
-
-/**
- * Ensemble forecast: weighted average of all models
- */
-export function ensembleForecast(historicalSales: number[]): number {
-  if (historicalSales.length === 0) return 0;
-  const ma3v = movingAverageForecast(historicalSales, 3);
-  const ma6v = movingAverageForecast(historicalSales, 6);
-  const esv  = exponentialSmoothing(historicalSales, 0.3);
-  const holt = holtSmoothing(historicalSales, 0.3, 0.1, 1);
-  const lin  = linearRegressionForecast(historicalSales, 1);
-  // Weights favour more reactive models
-  return Math.round((ma3v * 0.25 + ma6v * 0.15 + esv * 0.25 + holt * 0.2 + lin * 0.15));
-}
-
-// ─── Future Forecast ─────────────────────────────────────────────────────────
-
-export interface FutureForecast {
-  month: string;
-  ma3: number;
-  ma6: number;
-  exponentialSmoothing: number;
-  linearTrend: number;
-  ensemble: number;
-  lowerBound: number;
-  upperBound: number;
-  replenishmentNeeded: number;
-}
-
-/**
- * Generate future forecasts for specific month labels
- * Rolls each method forward period-by-period
- */
-export function generateFutureForecast(
-  historicalSales: number[],
-  futureMonths: string[],
-  safetyStock: number,
-  lastClosingStock: number,
-  periods: number = 3,
-): FutureForecast[] {
-  const months = futureMonths.slice(0, periods);
-  const ma3Data  = [...historicalSales];
-  const ma6Data  = [...historicalSales];
-  const esData   = [...historicalSales];
-  const linData  = [...historicalSales];
-  const ensData  = [...historicalSales];
-
-  // Estimate MAE from in-sample errors
-  const inSampleErrors = historicalSales.slice(1).map((actual, i) => {
-    const sub = historicalSales.slice(0, i + 1);
-    return Math.abs(actual - ensembleForecast(sub));
-  });
-  const mae = inSampleErrors.length > 0 ? inSampleErrors.reduce((a, b) => a + b, 0) / inSampleErrors.length : 200;
-
-  let runningStock = lastClosingStock;
-
-  return months.map((month, i) => {
-    const ma3v  = movingAverageForecast(ma3Data, 3);
-    const ma6v  = movingAverageForecast(ma6Data, 6);
-    const esv   = exponentialSmoothing(esData, 0.3);
-    const linv  = Math.max(0, linearRegressionForecast(linData, 1));
-    const ens   = Math.round((ma3v * 0.25 + ma6v * 0.15 + esv * 0.25 + holtSmoothing(ensData, 0.3, 0.1, 1) * 0.2 + linv * 0.15));
-    const margin = Math.round(mae * (1 + i * 0.2));
-
-    runningStock = Math.max(0, runningStock - ens);
-    const replenishmentNeeded = Math.max(0, Math.ceil((ens + safetyStock) - runningStock));
-    if (replenishmentNeeded > 0) runningStock += replenishmentNeeded;
-
-    // Roll each series forward
-    ma3Data.push(ma3v); ma6Data.push(ma6v); esData.push(esv);
-    linData.push(linv); ensData.push(ens);
-
-    return {
-      month,
-      ma3: ma3v,
-      ma6: ma6v,
-      exponentialSmoothing: esv,
-      linearTrend: linv,
-      ensemble: ens,
-      lowerBound: Math.max(0, ens - margin),
-      upperBound: ens + margin,
-      replenishmentNeeded,
-    };
-  });
-}
-
-/**
- * Generate future period forecasts with confidence intervals by rolling the method forward
- */
-export function generateFutureForecasts(
-  historicalSales: number[],
-  futurePeriods: number = 3,
-  method: ForecastMethod = 'sma',
-  options: Omit<ForecastOptions, 'method'> = {},
-): { value: number; lower: number; upper: number }[] {
-  if (historicalSales.length === 0) return [];
-
-  // Compute in-sample errors for confidence interval width
-  const inSampleErrors: number[] = [];
-  for (let i = 1; i < historicalSales.length; i++) {
-    const subset = historicalSales.slice(0, i);
-    const pred = generateForecast(subset, { method, ...options });
-    inSampleErrors.push(Math.abs(historicalSales[i] - pred));
-  }
-  const mae = inSampleErrors.length > 0 ? inSampleErrors.reduce((a, b) => a + b, 0) / inSampleErrors.length : 0;
-
-  const data = [...historicalSales];
-  return Array.from({ length: futurePeriods }, (_, i) => {
-    const value = Math.max(0, generateForecast(data, { method, ...options }));
-    const margin = Math.round(mae * (1 + i * 0.25)); // widen CI over time
-    data.push(value);
-    return { value, lower: Math.max(0, value - margin), upper: value + margin };
-  });
-}
-
-/**
- * Get future month labels starting from a given month string ("Mar 2026" → ["Apr 2026", …])
- */
-export function getFutureMonths(lastMonth: string, count: number): string[] {
-  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const parts = lastMonth.split(' ');
-  let mIdx = MONTH_NAMES.indexOf(parts[0]);
-  let year = parseInt(parts[1] ?? '2026', 10);
-  if (mIdx === -1) { mIdx = 0; }
-  const result: string[] = [];
-  for (let i = 0; i < count; i++) {
-    mIdx++;
-    if (mIdx >= 12) { mIdx = 0; year++; }
-    result.push(`${MONTH_NAMES[mIdx]} ${year}`);
-  }
-  return result;
 }
 
 /**

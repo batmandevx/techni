@@ -1,81 +1,140 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Send, 
   Bot, 
-  User, 
-  Sparkles, 
-  RefreshCw, 
-  TrendingUp, 
-  Package, 
-  Database,
-  AlertTriangle,
-  CheckCircle,
-  Zap,
+  Menu,
+  X,
+  Settings,
+  Globe,
   Download,
-  Globe
+  Share2,
+  Trash2,
+  Moon,
+  Sun,
+  Sparkles,
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import { useData } from '@/lib/DataContext';
+import { 
+  ChatMessage, 
+  ChatInput, 
+  ChatSidebar, 
+  TypingIndicator, 
+  WelcomeScreen,
+  type Message,
+  type ChatSession 
+} from '@/components/ai';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-const suggestedQuestions = [
-  { icon: TrendingUp, text: 'What is our current forecast accuracy?' },
-  { icon: Package, text: 'Which products are at risk of stockout?' },
-  { icon: Database, text: 'Summarize our inventory position' },
-  { icon: Sparkles, text: 'Recommend replenishment quantities for next month' },
+const languages = [
+  { code: 'English', name: 'English', flag: '🇬🇧' },
+  { code: 'Spanish', name: 'Español', flag: '🇪🇸' },
+  { code: 'French', name: 'Français', flag: '🇫🇷' },
+  { code: 'German', name: 'Deutsch', flag: '🇩🇪' },
+  { code: 'Japanese', name: '日本語', flag: '🇯🇵' },
+  { code: 'Mandarin', name: '中文', flag: '🇨🇳' },
+  { code: 'Arabic', name: 'العربية', flag: '🇸🇦' },
+  { code: 'Portuguese', name: 'Português', flag: '🇧🇷' },
 ];
 
 export default function AIAssistantPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: `👋 **Hello! I'm your Tenchi S&OP AI Assistant** powered by Google Gemini.
-
-I can help you with:
-- 📊 **Data Analysis** — Ask about your inventory, sales, and forecasts
-- 🔮 **Predictions** — Get demand forecasts and trend insights
-- 📦 **Replenishment** — Calculate optimal order quantities
-- ⚠️ **Risk Assessment** — Identify stockout risks
-
-How can I help you today?`,
-      timestamp: new Date(),
-    },
-  ]);
+  // State
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
   const [language, setLanguage] = useState('English');
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const { kpis, orders, historicalData, materials, customers } = useData();
+  const hasData = orders.length > 0 || customers.length > 0;
 
+  // Scroll to bottom on new messages
   useEffect(() => {
-    setIsMounted(true);
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+  // Load sessions from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('tenchi_chat_sessions');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setSessions(parsed.map((s: any) => ({
+          ...s,
+          timestamp: new Date(s.timestamp)
+        })));
+      } catch (e) {
+        console.error('Failed to load sessions:', e);
+      }
+    }
+  }, []);
+
+  // Save sessions to localStorage
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem('tenchi_chat_sessions', JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
+  // Create new session
+  const createNewSession = useCallback(() => {
+    const newSession: ChatSession = {
+      id: Date.now().toString(),
+      title: 'New Conversation',
+      lastMessage: 'Start chatting...',
+      timestamp: new Date(),
+      messageCount: 0,
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(newSession.id);
+    setMessages([]);
+    setError(null);
+  }, []);
+
+  // Initialize first session
+  useEffect(() => {
+    if (sessions.length === 0) {
+      createNewSession();
+    }
+  }, [sessions.length, createNewSession]);
+
+  // Send message
+  const sendMessage = async (text: string, attachments?: File[]) => {
+    if (!text.trim() && (!attachments || attachments.length === 0)) return;
 
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: text,
+      content: text + (attachments?.length ? `\n\n*[${attachments.length} file(s) attached]*` : ''),
       timestamp: new Date(),
     };
+
     setMessages(prev => [...prev, userMsg]);
-    setInput('');
     setIsLoading(true);
+    setError(null);
+
+    // Update session
+    if (currentSessionId) {
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId 
+          ? { 
+              ...s, 
+              lastMessage: text.slice(0, 50) + (text.length > 50 ? '...' : ''),
+              timestamp: new Date(),
+              messageCount: s.messageCount + 2
+            }
+          : s
+      ));
+    }
 
     try {
       const res = await fetch('/api/chat', {
@@ -83,7 +142,7 @@ How can I help you today?`,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          language: language,
+          language,
           userInfo: {
             name: 'Tenchi Admin',
             role: 'Supply Chain Manager',
@@ -112,11 +171,15 @@ How can I help you today?`,
         role: 'assistant',
         content: data.response || 'I apologize, I encountered an issue. Please try again.',
         timestamp: new Date(),
+        metadata: {
+          source: data.source,
+        }
       };
       setMessages(prev => [...prev, assistantMsg]);
       setIsOnline(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Chat error:', err);
+      setError(err.message || 'Failed to get response');
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -128,310 +191,261 @@ How can I help you today?`,
     setIsLoading(false);
   };
 
+  // Regenerate response
+  const regenerateResponse = async () => {
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    if (lastUserMessage) {
+      // Remove last assistant message
+      setMessages(prev => prev.slice(0, -1));
+      await sendMessage(lastUserMessage.content);
+    }
+  };
+
+  // Delete session
+  const deleteSession = (id: string) => {
+    setSessions(prev => prev.filter(s => s.id !== id));
+    if (currentSessionId === id) {
+      const remaining = sessions.filter(s => s.id !== id);
+      if (remaining.length > 0) {
+        setCurrentSessionId(remaining[0].id);
+        setMessages([]);
+      } else {
+        createNewSession();
+      }
+    }
+  };
+
+  // Rename session
+  const renameSession = (id: string, newTitle: string) => {
+    setSessions(prev => prev.map(s => 
+      s.id === id ? { ...s, title: newTitle } : s
+    ));
+  };
+
+  // Download chat
   const downloadChat = () => {
-    const chatText = messages.map(m => `[${m.timestamp.toLocaleString()}] ${m.role.toUpperCase()}:\n${m.content}\n`).join('\n----------------------------------------\n');
-    const blob = new Blob([`Tenchi S&OP AI Chat Report\nGenerated: ${new Date().toLocaleString()}\nUser: Tenchi Admin\nLanguage: ${language}\n\n========================================\n\n${chatText}`], { type: 'text/plain' });
+    const chatText = messages.map(m => 
+      `[${m.timestamp.toLocaleString()}] ${m.role.toUpperCase()}:\n${m.content}\n`
+    ).join('\n---\n\n');
+    
+    const blob = new Blob([
+      `Tenchi S&OP AI Chat Report\n` +
+      `Generated: ${new Date().toLocaleString()}\n` +
+      `Language: ${language}\n` +
+      `Messages: ${messages.length}\n\n` +
+      `========================================\n\n${chatText}`
+    ], { type: 'text/plain' });
+    
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Tenchi_AI_Report_${new Date().toISOString().split('T')[0]}.txt`;
+    a.download = `Tenchi_AI_Chat_${new Date().toISOString().split('T')[0]}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
+  // Clear chat
+  const clearChat = () => {
+    setMessages([]);
+    if (currentSessionId) {
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId 
+          ? { ...s, messageCount: 0, lastMessage: 'Start chatting...' }
+          : s
+      ));
+    }
+  };
+
   return (
-    <div style={{ 
-      height: 'calc(100vh - 8rem)', 
-      display: 'flex', 
-      flexDirection: 'column',
-      animation: 'fadeIn 0.4s ease-out'
-    }}>
-      {/* Header */}
-      <div className="section-header" style={{ marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 15px rgba(99, 102, 241, 0.4)'
-          }}>
-            <Bot size={24} style={{ color: 'white' }} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, background: 'linear-gradient(90deg, #f8fafc, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              AI Assistant
-            </h1>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: 0 }}>
-              Powered by Google Gemini • S&OP Domain Expert
-            </p>
-          </div>
-        </div>
-        <div className="glass-strong" style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          padding: '0.5rem 1rem',
-          borderRadius: '20px',
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          color: isOnline ? '#34d399' : '#f87171',
-          border: `1px solid ${isOnline ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
-        }}>
-          <span style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: isOnline ? '#10b981' : '#ef4444',
-            animation: isOnline ? 'pulse 2s infinite' : 'none',
-            boxShadow: `0 0 10px ${isOnline ? '#10b981' : '#ef4444'}`
-          }} />
-          {isOnline ? 'System Online' : 'System Offline'}
-        </div>
-      </div>
+    <div className="flex h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950">
+      {/* Sidebar */}
+      <ChatSidebar
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onNewChat={createNewSession}
+        onSelectSession={(id) => {
+          setCurrentSessionId(id);
+          setMessages([]);
+        }}
+        onDeleteSession={deleteSession}
+        onRenameSession={renameSession}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', padding: '0 0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Globe size={16} style={{ color: 'var(--text-muted)' }} />
-          <select 
-            value={language} 
-            onChange={(e) => setLanguage(e.target.value)}
-            className="input-modern"
-            style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem', width: 'auto', background: 'rgba(15, 23, 42, 0.6)' }}
-          >
-            <option value="English">🇬🇧 English</option>
-            <option value="Spanish">🇪🇸 Spanish</option>
-            <option value="French">🇫🇷 French</option>
-            <option value="German">🇩🇪 German</option>
-            <option value="Japanese">🇯🇵 Japanese</option>
-            <option value="Mandarin">🇨🇳 Mandarin</option>
-          </select>
-        </div>
-        
-        <button 
-          onClick={downloadChat}
-          className="btn-modern btn-secondary-modern hover-lift"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', height: 'auto' }}
-        >
-          <Download size={16} />
-          Download Report
-        </button>
-      </div>
-
-      {/* Chat Area */}
-      <div className="card-modern" style={{ 
-        flex: 1, 
-        display: 'flex', 
-        flexDirection: 'column',
-        overflow: 'hidden',
-        padding: 0
-      }}>
-        {/* Messages */}
-        <div style={{ 
-          flex: 1, 
-          overflowY: 'auto', 
-          padding: '1.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1.5rem'
-        }}>
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                gap: '1rem',
-                alignItems: 'flex-start',
-                flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
-                animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-              }}
-            >
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
-                background: msg.role === 'assistant'
-                  ? 'linear-gradient(135deg, var(--primary), var(--secondary))'
-                  : 'linear-gradient(135deg, var(--success), #059669)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                boxShadow: msg.role === 'assistant' ? '0 4px 15px rgba(99, 102, 241, 0.3)' : '0 4px 15px rgba(16, 185, 129, 0.3)'
-              }}>
-                {msg.role === 'assistant' ? 
-                  <Bot size={20} style={{ color: 'white' }} /> : 
-                  <User size={20} style={{ color: 'white' }} />
-                }
-              </div>
-              <div style={{
-                maxWidth: '75%',
-                padding: '1.25rem',
-                borderRadius: msg.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                background: msg.role === 'user' 
-                  ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.9), rgba(79, 70, 229, 0.9))' 
-                  : 'rgba(30, 41, 59, 0.8)',
-                color: 'var(--text)',
-                border: msg.role === 'assistant' ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                boxShadow: msg.role === 'user' ? '0 10px 25px rgba(99, 102, 241, 0.2)' : '0 4px 15px rgba(0,0,0,0.2)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <div style={{ fontSize: '0.95rem', lineHeight: 1.6 }}>
-                  <ReactMarkdown components={{
-                    p: ({ children }) => <p style={{ margin: '0.5rem 0' }}>{children}</p>,
-                    strong: ({ children }) => <strong style={{ color: msg.role === 'user' ? '#fff' : '#818cf8', fontWeight: 600 }}>{children}</strong>,
-                    ul: ({ children }) => <ul style={{ paddingLeft: '1.5rem', margin: '0.75rem 0', listStyleType: 'disc' }}>{children}</ul>,
-                    li: ({ children }) => <li style={{ margin: '0.25rem 0' }}>{children}</li>,
-                  }}>
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-                <div style={{ 
-                  fontSize: '0.7rem', 
-                  color: msg.role === 'user' ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)',
-                  marginTop: '0.75rem',
-                  textAlign: msg.role === 'user' ? 'left' : 'right',
-                  fontWeight: 500
-                }}>
-                  {isMounted ? msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {isLoading && (
-            <div style={{ display: 'flex', gap: '1rem', animation: 'fadeIn 0.4s' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
-              }}>
-                <Bot size={20} style={{ color: 'white' }} />
-              </div>
-              <div style={{
-                padding: '1.25rem',
-                borderRadius: '20px 20px 20px 4px',
-                background: 'rgba(30, 41, 59, 0.8)',
-                border: '1px solid rgba(255,255,255,0.05)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <RefreshCw size={18} style={{ animation: 'spin 1.5s linear infinite', color: 'var(--primary)' }} />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Synthesizing S&OP insights...</span>
-              </div>
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Suggestions */}
-        {messages.length <= 1 && (
-          <div className="glass" style={{ 
-            padding: '1.5rem', 
-            borderTop: '1px solid var(--border)',
-            borderBottom: '1px solid var(--border)'
-          }}>
-            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Suggested Inquiries
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-              {suggestedQuestions.map((q, i) => {
-                const Icon = q.icon;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => sendMessage(q.text)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.75rem 1rem',
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      border: '1px solid rgba(99, 102, 241, 0.2)',
-                      borderRadius: '12px',
-                      fontSize: '0.85rem',
-                      color: 'var(--text)',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
-                      e.currentTarget.style.borderColor = 'var(--primary)';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.2)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)';
-                      e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.2)';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    <Icon size={16} style={{ color: 'var(--primary)' }} />
-                    {q.text}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Input */}
-        <div style={{ 
-          padding: '1.5rem', 
-          background: 'rgba(15, 23, 42, 0.8)',
-          backdropFilter: 'blur(10px)'
-        }}>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-              placeholder="Ask about your S&OP data..."
-              disabled={isLoading}
-              className="input-modern"
-              style={{ flex: 1, padding: '1rem 1.5rem', fontSize: '1rem', borderRadius: '16px' }}
-            />
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || isLoading}
-              className="hover-lift"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '56px',
-                height: '56px',
-                borderRadius: '16px',
-                background: !input.trim() || isLoading ? 'rgba(51, 65, 85, 0.5)' : 'linear-gradient(135deg, var(--primary), var(--secondary))',
-                color: !input.trim() || isLoading ? 'var(--text-muted)' : 'white',
-                border: !input.trim() || isLoading ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                cursor: !input.trim() || isLoading ? 'not-allowed' : 'pointer',
-                transition: 'all 0.3s',
-                boxShadow: !input.trim() || isLoading ? 'none' : '0 4px 15px rgba(99, 102, 241, 0.4)'
-              }}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-gray-600 dark:text-slate-400 lg:hidden"
             >
-              <Send size={20} style={{ marginLeft: !input.trim() || isLoading ? '0' : '2px' }} />
+              <Menu className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="hidden lg:flex p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-gray-600 dark:text-slate-400"
+            >
+              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+            
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="font-semibold text-gray-900 dark:text-white">
+                  AI Assistant
+                </h1>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                  <span className="text-xs text-gray-500 dark:text-slate-400">
+                    {isOnline ? 'Online' : 'Offline'} • Powered by Gemini
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            {/* Language Selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg"
+              >
+                <Globe className="w-4 h-4" />
+                <span className="hidden sm:inline">{languages.find(l => l.code === language)?.flag}</span>
+                <span className="hidden sm:inline">{language}</span>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+
+              <AnimatePresence>
+                {showLanguageMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-1 z-50"
+                  >
+                    {languages.map((lang) => (
+                      <button
+                        key={lang.code}
+                        onClick={() => {
+                          setLanguage(lang.code);
+                          setShowLanguageMenu(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
+                          language === lang.code
+                            ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                            : 'text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>{lang.flag}</span>
+                        <span>{lang.name}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Clear Chat */}
+            <button
+              onClick={clearChat}
+              disabled={messages.length === 0}
+              className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg disabled:opacity-50"
+              title="Clear chat"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
+            {/* Download */}
+            <button
+              onClick={downloadChat}
+              disabled={messages.length === 0}
+              className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg disabled:opacity-50"
+              title="Download chat"
+            >
+              <Download className="w-4 h-4" />
             </button>
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem', textAlign: 'center' }}>
-            AI responses are generated based on your uploaded data and may require verification for critical decisions.
-          </p>
+        </header>
+
+        {/* Error Alert */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-red-50 dark:bg-red-500/10 border-b border-red-200 dark:border-red-500/20"
+            >
+              <div className="flex items-center gap-2 px-4 py-3 text-red-600 dark:text-red-400">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-sm">{error}</span>
+                <button 
+                  onClick={() => setError(null)}
+                  className="ml-auto p-1 hover:bg-red-100 dark:hover:bg-red-500/20 rounded"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto">
+          {messages.length === 0 ? (
+            <WelcomeScreen 
+              onSuggestionClick={sendMessage}
+              hasData={hasData}
+            />
+          ) : (
+            <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+              <AnimatePresence>
+                {messages.map((msg, index) => (
+                  <ChatMessage
+                    key={msg.id}
+                    message={msg}
+                    isLast={index === messages.length - 1}
+                    onRegenerate={regenerateResponse}
+                  />
+                ))}
+              </AnimatePresence>
+
+              {isLoading && !isStreaming && (
+                <div className="flex gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-5 h-5 text-white" />
+                  </div>
+                  <TypingIndicator />
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
+            </div>
+          )}
+        </div>
+
+        {/* Input Area */}
+        <div className="border-t border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+          <div className="max-w-4xl mx-auto">
+            <ChatInput
+              onSend={sendMessage}
+              isLoading={isLoading}
+              disabled={!currentSessionId}
+              placeholder={hasData 
+                ? "Ask about your S&OP data, forecasts, inventory..." 
+                : "Upload data to get AI-powered insights"}
+            />
+          </div>
         </div>
       </div>
     </div>
