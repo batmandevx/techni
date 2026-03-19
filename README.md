@@ -1,217 +1,309 @@
 # Tenchi S&OP Platform
 
-**Sales & Operations Planning Automation Platform with AI Forecasting**
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js" alt="Next.js 14">
+  <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react" alt="React 18">
+  <img src="https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Tailwind-3.0-38B2AC?style=for-the-badge&logo=tailwind-css" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker" alt="Docker">
+</p>
 
-A comprehensive enterprise-grade S&OP solution that transforms demand planning from reactive spreadsheets into a structured, AI-driven decision system.
-
-![Tenchi S&OP Dashboard](https://via.placeholder.com/800x400/1B2A4A/FFFFFF?text=Tenchi+S%26OP+Platform)
-
-## Features
-
-### Core Capabilities
-
-- **AI-Powered Demand Forecasting** - Uses Google Gemini API combined with statistical models (SMA, WMA, ARIMA) for accurate predictions
-- **Real-time Inventory Management** - Track stock levels, in-transit inventory, and automated replenishment calculations
-- **Order Management System** - Multi-line order support with full validation pipeline
-- **Executive Dashboard** - Interactive KPIs, charts, and 3D visualizations
-- **AI Chat Assistant** - Conversational analytics powered by Gemini
-- **Automated Reporting** - PDF and Excel report generation
-- **Email Automation** - Automated alerts and notifications
-
-### Key Features
-
-- 📊 **Interactive Dashboards** - Real-time KPIs with Recharts visualizations
-- 🤖 **AI Forecasting Engine** - Hybrid statistical + AI ensemble forecasting
-- 📁 **Excel/CSV Upload** - Drag-and-drop file processing with validation
-- 💬 **AI Chat Interface** - Natural language queries for supply chain data
-- 📈 **3D Visualizations** - Three.js powered inventory heatmaps
-- 📄 **PDF/Excel Reports** - Automated report generation
-- 📧 **Email Automation** - Smart alerts and notifications
-- 🔐 **Role-Based Access** - Admin, Planner, and Viewer roles
-
-## Tech Stack
-
-- **Framework**: Next.js 14 (App Router, TypeScript)
-- **Database**: PostgreSQL with Prisma ORM
-- **AI Engine**: Google Gemini 2.0 Flash API
-- **Styling**: Tailwind CSS
-- **Charts**: Recharts, Chart.js
-- **3D**: Three.js + React Three Fiber
-- **Animation**: Framer Motion
-- **Auth**: JWT-based authentication
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- PostgreSQL database
-- Google Gemini API key
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/your-org/tenchi-sop.git
-cd tenchi-sop
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Set up environment variables:
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your credentials:
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/tenchi_sop"
-NEXTAUTH_SECRET="your-secret-key"
-GEMINI_API_KEY="your-gemini-api-key"
-```
-
-4. Set up the database:
-```bash
-npx prisma migrate dev --name init
-npx prisma db seed
-```
-
-5. Run the development server:
-```bash
-npm run dev
-```
-
-Visit `http://localhost:3000` to access the application.
-
-### Default Login Credentials
-
-- **Admin**: admin@tenchi.com / admin123
-- **Planner**: planner@tenchi.com / planner123
-- **Viewer**: viewer@tenchi.com / viewer123
-
-## Core Calculations
-
-### Inventory Formulas
-
-```
-Closing Stock = Opening Stock + Stock in Transit - Actual Sales
-Replenishment Qty = (Forecast Demand + Safety Stock) - Closing Stock
-```
-
-### KPIs
-
-- **Forecast Accuracy**: (1 - |Actual - Forecast| / Actual) × 100
-- **Inventory Turns**: COGS / Average Inventory
-- **Fill Rate**: Orders Fulfilled / Total Orders × 100
-- **Stock Coverage**: Current Stock / Average Daily Sales
-- **Stockout Risk**: Probability based on demand variance
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth` - Login/Register
-
-### Core APIs
-- `GET /api/dashboard` - Dashboard KPIs and stats
-- `POST /api/upload` - File upload (Excel/CSV)
-- `GET /api/orders` - List orders with filters
-- `GET /api/inventory` - Inventory data
-- `GET /api/forecast` - Forecast data and generation
-- `POST /api/ai` - AI chat interface
-- `GET /api/reports` - Generate PDF/Excel reports
-
-## Project Structure
-
-```
-tenchi-sop/
-├── app/
-│   ├── api/              # API routes
-│   │   ├── auth/         # Authentication
-│   │   ├── upload/       # File upload
-│   │   ├── orders/       # Order management
-│   │   ├── inventory/    # Inventory APIs
-│   │   ├── forecast/     # Forecasting APIs
-│   │   ├── ai/           # AI chat API
-│   │   ├── reports/      # Report generation
-│   │   └── dashboard/    # Dashboard data
-│   ├── components/       # React components
-│   ├── lib/              # Utility functions
-│   │   ├── prisma.ts     # Database client
-│   │   ├── gemini.ts     # Gemini AI integration
-│   │   ├── calculations.ts # S&OP formulas
-│   │   ├── validators.ts # Input validation
-│   │   ├── excel.ts      # Excel parsing
-│   │   ├── pdf.ts        # PDF generation
-│   │   └── email.ts      # Email templates
-│   ├── types/            # TypeScript types
-│   ├── page.tsx          # Main dashboard
-│   └── layout.tsx        # Root layout
-├── prisma/
-│   ├── schema.prisma     # Database schema
-│   └── seed.ts           # Seed data
-└── package.json
-```
-
-## Features in Detail
-
-### 1. File Upload System
-- Drag-and-drop interface
-- Excel (.xlsx, .xls) and CSV support
-- Automatic sheet type detection
-- Row-by-row validation
-- Duplicate detection
-- Multi-line order grouping
-- Error reporting with downloadable CSV
-
-### 2. Order Management
-- Full validation pipeline
-- Master data validation
-- Business rule enforcement
-- Status lifecycle tracking
-- Multi-line order support
-- Credit limit checking
-
-### 3. Inventory Management
-- Real-time stock tracking
-- Automated calculations
-- Stockout risk assessment
-- Replenishment recommendations
-- Safety stock optimization
-
-### 4. AI Forecasting
-- Hybrid ensemble forecasting
-- Statistical baselines (SMA, WMA)
-- Gemini AI refinement
-- Confidence intervals
-- Backtesting and accuracy tracking
-
-### 5. AI Chat Assistant
-- Natural language queries
-- Function calling for data access
-- Tool-based responses
-- Context-aware conversations
-- Export capabilities
-
-### 6. Reporting
-- Executive summary PDFs
-- Inventory reports
-- Order reports
-- Forecast reports
-- Excel data exports
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Support
-
-For support, email support@tenchi-sop.com or join our Slack channel.
+<p align="center">
+  <b>AI-Powered Sales & Operations Planning Platform</b><br>
+  Advanced demand forecasting, inventory optimization, and what-if scenario modeling
+</p>
 
 ---
 
-**Strategy. Scale. Success.**
+## 🌟 Features
 
-Built with Next.js + Gemini AI
+### 📊 Data Management
+- **Excel Upload** with live data preview
+- **File Metadata Analysis** - columns, rows, data types, unique values
+- **Column Selection** - choose which columns to import
+- **Row Selection** - select specific rows for upload
+- **Data Persistence** via localStorage
+
+### 🤖 AI Forecasting Engine
+- **6 Forecasting Algorithms**:
+  - Simple Moving Average (SMA)
+  - Weighted Moving Average (WMA)
+  - Simple Exponential Smoothing (SES)
+  - Holt's Method (Double Exponential Smoothing)
+  - Linear Regression
+  - Seasonal Decomposition
+- **Trend Analysis** with confidence scoring
+- **AI-Powered Insights** - automatic detection of trends, risks, and anomalies
+- **Forecast Accuracy Metrics** - MAPE, RMSE, Bias, Tracking Signal
+
+### 📈 Interactive Visualizations
+- **4 Chart Types**:
+  - Forecast vs Actual (Area + Bar combo)
+  - Trend Analysis (Line with reference lines)
+  - Accuracy Metrics (Bar with color coding)
+  - Distribution (Pie chart)
+- **Real-time Updates** as you adjust parameters
+
+### 🔮 What-If Scenario Modeling
+- **Interactive Sliders** for demand and safety stock adjustments
+- **Quick Scenarios**: Optimistic, Baseline, Pessimistic, Promotional
+- **Scenario Comparison** side-by-side
+- **Impact Analysis** on next month forecast
+
+### 🎨 Modern UI/UX
+- **Glassmorphism Design** with dark theme
+- **Responsive Layout** - works on desktop and mobile
+- **Smooth Animations** with Framer Motion
+- **Toast Notifications** for user feedback
+- **Keyboard Shortcuts** for power users
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+ 
+- npm 9+
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/batmandevx/techni.git
+cd techni
+
+# Install dependencies
+npm install
+
+# Create environment file
+cp .env.example .env.local
+
+# Start development server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 📦 Deployment
+
+### Vercel (Recommended)
+```bash
+npm i -g vercel
+vercel --prod
+```
+
+### Docker
+```bash
+# Build and run
+npm run docker:build
+npm run docker:run
+
+# Or with docker-compose
+npm run docker:compose
+```
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXTAUTH_URL` | ✅ | Your app URL (http://localhost:3000 for dev) |
+| `NEXTAUTH_SECRET` | ✅ | Random 32+ character string |
+| `GEMINI_API_KEY` | ❌ | For AI assistant features |
+| `DATABASE_URL` | ❌ | PostgreSQL connection string |
+
+---
+
+## 📁 Project Structure
+
+```
+tenchi/
+├── src/
+│   ├── app/                 # Next.js App Router
+│   │   ├── api/            # API routes
+│   │   ├── forecasting/    # Forecasting page
+│   │   ├── upload/         # Excel upload page
+│   │   └── ...
+│   ├── components/          # React components
+│   ├── lib/                # Utility functions
+│   │   ├── forecasting.ts  # Forecasting engine
+│   │   ├── DataContext.tsx # Data management
+│   │   └── hooks/          # Custom hooks
+│   └── middleware.ts       # Next.js middleware
+├── .github/workflows/       # CI/CD pipeline
+├── Dockerfile              # Docker configuration
+├── docker-compose.yml      # Docker Compose
+├── next.config.js          # Next.js config
+└── vercel.json             # Vercel config
+```
+
+---
+
+## 🔧 Forecasting Algorithms
+
+### Simple Moving Average (SMA)
+```typescript
+// Average of last n periods
+SMA = (P1 + P2 + ... + Pn) / n
+```
+Best for: Stable demand patterns
+
+### Weighted Moving Average (WMA)
+```typescript
+// More weight to recent periods
+WMA = (w1*P1 + w2*P2 + ... + wn*Pn) / (w1 + w2 + ... + wn)
+```
+Best for: Gradual trend changes
+
+### Simple Exponential Smoothing (SES)
+```typescript
+// Exponential decay weighting
+Forecast = α * Actual + (1-α) * Previous_Forecast
+```
+Best for: No trend or seasonality
+
+### Holt's Method
+```typescript
+// Trend-adjusted smoothing
+Level = α * Actual + (1-α) * (Previous_Level + Trend)
+Trend = β * (Level - Previous_Level) + (1-β) * Previous_Trend
+```
+Best for: Trending data
+
+### Linear Regression
+```typescript
+// Linear trend projection
+Y = a + bX
+```
+Best for: Strong linear trends
+
+### Seasonal Decomposition
+```typescript
+// Seasonal pattern recognition
+Forecast = Trend * Seasonal_Index
+```
+Best for: Seasonal products
+
+---
+
+## 🎯 Usage Guide
+
+### 1. Upload Data
+1. Go to **Upload Data** page
+2. Select file type (Orders or Customers)
+3. Drop your Excel file
+4. Review file metadata and preview
+5. Select columns and rows to import
+6. Confirm upload
+
+### 2. View Forecasts
+1. Navigate to **Forecasting** page
+2. Select a material from the tabs
+3. View KPI cards and insights
+4. Switch between chart types
+5. Try different forecasting methods
+
+### 3. Run What-If Scenarios
+1. Adjust **Demand** slider (+/- 50%)
+2. Adjust **Safety Stock** slider (+/- 50%)
+3. View impact on next month forecast
+4. Save scenarios for comparison
+5. Export results to Excel
+
+### 4. Export Data
+- Click **Export** button on forecasting page
+- Downloads Excel file with all forecast data
+- Includes: Month, Opening Stock, Sales, Forecast, Closing Stock, Replenishment, Accuracy
+
+---
+
+## 🏥 Health Checks
+
+```bash
+# Check application health
+GET /api/health
+
+Response:
+{
+  "status": "healthy",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "uptime": 3600,
+  "environment": "production",
+  "version": "1.0.0",
+  "checks": {
+    "memory": {
+      "status": "ok",
+      "heapUsed": "45MB"
+    }
+  }
+}
+```
+
+---
+
+## 🔒 Security Features
+
+- **CORS** configuration
+- **Security Headers**: HSTS, X-Frame-Options, X-XSS-Protection
+- **Rate Limiting** on API routes
+- **CSRF Protection**
+- **Error Boundaries** for graceful error handling
+
+---
+
+## 🛠️ Development
+
+```bash
+# Run type check
+npm run type-check
+
+# Build for production
+npm run build
+
+# Analyze bundle size
+npm run analyze
+
+# Clean build artifacts
+npm run clean
+```
+
+---
+
+## 📸 Screenshots
+
+<p align="center">
+  <i>Dashboard with KPI cards and charts</i>
+</p>
+
+<p align="center">
+  <i>Forecasting page with multiple algorithms</i>
+</p>
+
+<p align="center">
+  <i>Excel upload with data preview</i>
+</p>
+
+---
+
+## 📝 License
+
+MIT License - see LICENSE file for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+
+---
+
+## 📧 Support
+
+For support, email support@tenchi-sop.com or open an issue on GitHub.
+
+---
+
+<p align="center">
+  Built with ❤️ using Next.js, React, TypeScript, and Tailwind CSS
+</p>
