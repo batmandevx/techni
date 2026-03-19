@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         String    @default("VIEWER")
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  uploads      Upload[]
+  auditLogs    AuditLog[]
+  chatMessages ChatMessage[]
+}
+
+model Customer {
+  id            String   @id
+  name          String
+  salesOrg      String   @default("1000")
+  distChannel   String   @default("10")
+  division      String   @default("0")
+  paymentTerms  String   @default("D30")
+  shipToCity    String
+  country       String
+  creditLimit   Float?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  orders        Order[]
+}
+
+model Material {
+  id               String             @id
+  description      String
+  baseUom          String             @default("EA")
+  salesUom         String             @default("EA")
+  plant            String             @default("DXB1")
+  storageLocation  String
+  priceUsd         Float
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  orderLines       OrderLine[]
+  inventoryRecords InventoryRecord[]
+  forecastRecords  ForecastRecord[]
+}
+
+model Order {
+  id                    String               @id
+  orderDate             DateTime
+  customerId            String
+  customer              Customer             @relation(fields: [customerId], references: [id])
+  status                String               @default("CREATED")
+  totalAmount           Float?
+  requestedDeliveryDate DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  uploadId              String?
+  lines                 OrderLine[]
+  statusHistory         OrderStatusHistory[]
+}
+
+model OrderLine {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  quantity   Int
+  unitPrice  Float
+  lineTotal  Float
+
+  @@unique([orderId, materialId])
+}
+
+model InventoryRecord {
+  id               String   @id @default(cuid())
+  materialId       String
+  material         Material @relation(fields: [materialId], references: [id])
+  month            DateTime
+  openingStock     Int
+  stockInTransit   Int      @default(0)
+  actualSales      Int      @default(0)
+  closingStock     Int
+  safetyStock      Int
+  replenishmentQty Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([materialId, month])
+}
+
+model ForecastRecord {
+  id                String   @id @default(cuid())
+  materialId        String
+  material          Material @relation(fields: [materialId], references: [id])
+  month             DateTime
+  forecastDemand    Int
+  actualDemand      Int?
+  forecastAccuracy  Float?
+  confidenceLower   Int?
+  confidenceUpper   Int?
+  modelUsed         String   @default("gemini-moving-avg")
+  createdAt         DateTime @default(now())
+
+  @@unique([materialId, month])
+}
+
+model Upload {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  fileName    String
+  fileUrl     String
+  fileSize    Int
+  rowsTotal   Int      @default(0)
+  rowsSuccess Int      @default(0)
+  rowsFailed  Int      @default(0)
+  errorReport String?
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model EmailLog {
+  id         String   @id @default(cuid())
+  recipient  String
+  subject    String
+  templateId String
+  status     String   @default("sent")
+  sentAt     DateTime @default(now())
+}
+
+model OrderStatusHistory {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  fromStatus String?
+  toStatus   String
+  changedAt  DateTime @default(now())
+  changedBy  String?
+}
+
+model Scenario {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        String
+  params      String
+  results     String
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  role      String
+  content   String
+  toolsUsed String?
+  createdAt DateTime @default(now())
+}

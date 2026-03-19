@@ -1,0 +1,54 @@
+{
+  "sheetNames": [
+    "Customer_Master",
+    "Material_Master",
+    "Orders_Positive",
+    "Orders_Negative_Duplicates",
+    "UAT_Test_Cases"
+  ],
+  "sheets": {
+    "Customer_Master": [
+      "Customer_ID",
+      "Customer_Name",
+      "Sales_Org",
+      "Dist_Channel",
+      "Division",
+      "Payment_Terms",
+      "Ship_To_City",
+      "Country"
+    ],
+    "Material_Master": [
+      "Material_ID",
+      "Material_Description",
+      "Base_UOM",
+      "Sales_UOM",
+      "Plant",
+      "Storage_Location",
+      "Price_USD"
+    ],
+    "Orders_Positive": [
+      "Order_ID",
+      "Order_Date",
+      "Customer_ID",
+      "Material_ID",
+      "Quantity",
+      "Requested_Delivery_Date",
+      "Sales_Org"
+    ],
+    "Orders_Negative_Duplicates": [
+      "Order_ID",
+      "Order_Date",
+      "Customer_ID",
+      "Material_ID",
+      "Quantity",
+      "Requested_Delivery_Date",
+      "Sales_Org"
+    ],
+    "UAT_Test_Cases": [
+      "Test_Case_ID",
+      "Scenario",
+      "Input",
+      "Expected_Result"
+    ]
+  }
+}
