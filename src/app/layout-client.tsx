@@ -25,8 +25,9 @@ import { ThemeProvider, useTheme } from '@/lib/ThemeContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
-import { useToast, Toast } from '@/components/Toast';
+import { useToast } from '@/components/Toast';
 import { ErrorBoundary } from '@/components/error/ErrorBoundary';
+import { UIProvider } from '@/components/ui';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, badge: null },
@@ -445,7 +446,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <LayoutContent>{children}</LayoutContent>
+        <UIProvider>
+          <LayoutContent>{children}</LayoutContent>
+        </UIProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
