@@ -303,9 +303,11 @@ export default function ModernDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [showNotifications, setShowNotifications] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState('');
 
   useEffect(() => {
     setTimeout(() => setIsLoading(false), 1500);
+    setCurrentDate(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }));
   }, []);
 
   const sidebarItems = [
@@ -412,7 +414,7 @@ export default function ModernDashboard() {
                 <div>
                   <h1 className="text-2xl font-bold text-white">Dashboard</h1>
                   <p className="text-sm text-gray-400">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    {currentDate || 'Loading...'}
                   </p>
                 </div>
               </div>

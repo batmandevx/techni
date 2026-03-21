@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, MoreHorizontal } from 'lucide-react';
 import { Sparkline } from './Sparkline';
@@ -79,6 +79,12 @@ export function ModernKPI({
 }: ModernKPIProps) {
   const colors = colorMap[color];
   const isPositive = change && change >= 0;
+  const [progressWidth, setProgressWidth] = useState(60);
+
+  useEffect(() => {
+    // Generate random width only on client to avoid hydration mismatch
+    setProgressWidth(Math.floor(Math.random() * 40) + 60);
+  }, []);
 
   return (
     <motion.div
@@ -145,7 +151,7 @@ export function ModernKPI({
         <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
           <motion.div
             initial={{ width: 0 }}
-            animate={{ width: `${Math.random() * 40 + 60}%` }}
+            animate={{ width: `${progressWidth}%` }}
             transition={{ duration: 1.5, ease: "easeOut" }}
             className={`h-full rounded-full bg-gradient-to-r ${colors.gradient}`}
           />

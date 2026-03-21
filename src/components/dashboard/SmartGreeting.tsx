@@ -9,12 +9,14 @@ interface SmartGreetingProps {
 }
 
 export function SmartGreeting({ userName }: SmartGreetingProps) {
-  const [greeting, setGreeting] = useState('');
-  const [subGreeting, setSubGreeting] = useState('');
-  const [icon, setIcon] = useState<React.ReactNode>(null);
-  const [gradient, setGradient] = useState('');
+  const [mounted, setMounted] = useState(false);
+  const [greeting, setGreeting] = useState(`Welcome, ${userName}!`);
+  const [subGreeting, setSubGreeting] = useState('Loading your dashboard...');
+  const [icon, setIcon] = useState<React.ReactNode>(<Sun className="w-6 h-6 text-yellow-400" />);
+  const [gradient, setGradient] = useState('from-yellow-500/20 via-orange-500/10 to-transparent');
 
   useEffect(() => {
+    setMounted(true);
     const hour = new Date().getHours();
     
     if (hour >= 5 && hour < 12) {
@@ -40,6 +42,18 @@ export function SmartGreeting({ userName }: SmartGreetingProps) {
     }
   }, [userName]);
 
+  // Prevent hydration mismatch by rendering placeholder until mounted
+  if (!mounted) {
+    return (
+      <div className="relative overflow-hidden rounded-3xl bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-slate-800 rounded w-1/3 mb-2"></div>
+          <div className="h-6 bg-slate-800 rounded w-1/2"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -57,17 +71,17 @@ export function SmartGreeting({ userName }: SmartGreetingProps) {
             className="absolute w-2 h-2 bg-white/10 rounded-full"
             animate={{
               y: [0, -30, 0],
-              x: [0, Math.random() * 20 - 10, 0],
+              x: [0, ((i * 7) % 20) - 10, 0],
               opacity: [0.2, 0.5, 0.2],
             }}
             transition={{
-              duration: 3 + Math.random() * 2,
+              duration: 3 + ((i * 3) % 2),
               repeat: Infinity,
-              delay: Math.random() * 2,
+              delay: ((i * 5) % 2),
             }}
             style={{
               left: `${20 + i * 15}%`,
-              top: `${50 + Math.random() * 30}%`,
+              top: `${50 + ((i * 11) % 30)}%`,
             }}
           />
         ))}
