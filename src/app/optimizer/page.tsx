@@ -15,11 +15,12 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useData } from '@/lib/DataContext';
-import { 
-  calculateEOQ, 
+import {
+  calculateEOQ,
   calculateReorderPoint,
   calculateReplenishment,
-  calculateClosingStock
+  calculateClosingStock,
+  calculateStatisticalSafetyStock
 } from '@/lib/forecasting';
 import { MATERIALS, HISTORICAL_DATA } from '@/lib/mock-data';
 
@@ -50,6 +51,8 @@ export default function OrderOptimizerPage() {
 
   // Calculate optimizer results for all materials
   const optimizerResults: OptimizerResult[] = useMemo(() => {
+    const slFraction = serviceLevel / 100; // Convert 90→0.90, 95→0.95, etc.
+
     return MATERIALS.map(mat => {
       const matHistory = historicalData[mat.id] || HISTORICAL_DATA[mat.id] || [];
       const latest = matHistory[matHistory.length - 1] || {
@@ -71,10 +74,28 @@ export default function OrderOptimizerPage() {
       const salesValues = matHistory
         .filter((h: any) => h.actualSales > 0)
         .map((h: any) => h.actualSales);
-      
+
       const avgMonthlySales = salesValues.length > 0
         ? Math.round(salesValues.reduce((a: number, b: number) => a + b, 0) / salesValues.length)
         : Math.round(latest.forecast * 0.8);
+
+      // Demand standard deviation (monthly)
+      const demandStdDev = salesValues.length > 1
+        ? Math.sqrt(
+            salesValues.reduce((sum: number, v: number) => sum + Math.pow(v - avgMonthlySales, 2), 0) / salesValues.length
+          )
+        : avgMonthlySales * 0.2; // fallback: 20% of avg
+
+      // Daily demand stats
+      const avgDailyDemand = avgMonthlySales / 30;
+      const dailyDemandStdDev = demandStdDev / 30;
+      const leadTimeDays = mat.leadTimeDays || 14;
+
+      // Statistical safety stock based on service level slider
+      const dynamicSafetyStock = Math.max(
+        calculateStatisticalSafetyStock(avgDailyDemand, dailyDemandStdDev, leadTimeDays, slFraction),
+        latest.safetyStock // never go below the data-driven safety stock
+      );
 
       // Annual demand
       const annualDemand = avgMonthlySales * 12;
@@ -85,20 +106,11 @@ export default function OrderOptimizerPage() {
       // Calculate EOQ
       const eoq = calculateEOQ(annualDemand, mat.orderingCost || 50, holdingCostPerUnit);
 
-      // Calculate reorder point
-      const avgDailyDemand = avgMonthlySales / 30;
-      const reorderPoint = calculateReorderPoint(
-        avgDailyDemand,
-        mat.leadTimeDays || 14,
-        latest.safetyStock
-      );
+      // Calculate reorder point using dynamic safety stock
+      const reorderPoint = calculateReorderPoint(avgDailyDemand, leadTimeDays, dynamicSafetyStock);
 
-      // Calculate Order Prompt (Replenishment)
-      const orderPrompt = calculateReplenishment(
-        latest.forecast,
-        latest.safetyStock,
-        currentStock
-      );
+      // Calculate Order Prompt using dynamic safety stock
+      const orderPrompt = calculateReplenishment(latest.forecast, dynamicSafetyStock, currentStock);
 
       // Stock coverage in months
       const stockCoverage = avgMonthlySales > 0 ? currentStock / avgMonthlySales : 0;
@@ -110,8 +122,8 @@ export default function OrderOptimizerPage() {
         priceUSD: mat.priceUSD,
         currentStock,
         avgMonthlySales,
-        safetyStock: latest.safetyStock,
-        leadTimeDays: mat.leadTimeDays || 14,
+        safetyStock: dynamicSafetyStock,
+        leadTimeDays,
         orderingCost: mat.orderingCost || 50,
         holdingCostPct: mat.holdingCostPct || 0.20,
         eoq,
@@ -123,7 +135,7 @@ export default function OrderOptimizerPage() {
         holdingCostPerUnit,
       };
     });
-  }, [materials, historicalData]);
+  }, [materials, historicalData, serviceLevel]);
 
   // Calculate summary statistics
   const summary = useMemo(() => {
@@ -177,11 +189,20 @@ export default function OrderOptimizerPage() {
                 EOQ calculation and order prompt generation with safety stock
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
-                <RefreshCw size={16} />
-                <span className="hidden sm:inline">Recalculate</span>
-              </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">Service Level:</span>
+                <input
+                  type="range"
+                  min={90}
+                  max={99}
+                  step={1}
+                  value={serviceLevel}
+                  onChange={(e) => setServiceLevel(Number(e.target.value))}
+                  className="w-20 accent-indigo-500"
+                />
+                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 w-10">{serviceLevel}%</span>
+              </div>
               <button onClick={handleExport} className="flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors">
                 <Download size={16} />
                 <span className="hidden sm:inline">Export</span>
@@ -345,6 +366,8 @@ export default function OrderOptimizerPage() {
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Current Stock</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Safety Stock</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">EOQ</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Reorder Point</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Coverage (Mo)</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Order Prompt (Units)</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Order Prompt (Value)</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-slate-400">Status</th>
@@ -370,6 +393,18 @@ export default function OrderOptimizerPage() {
                     </td>
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">
                       {item.eoq.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">
+                      {Math.round(item.reorderPoint).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`font-medium ${
+                        item.stockCoverage < 1 ? 'text-red-600 dark:text-red-400' :
+                        item.stockCoverage < 2 ? 'text-amber-600 dark:text-amber-400' :
+                        'text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {item.stockCoverage.toFixed(1)} mo
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       {item.orderPrompt > 0 ? (

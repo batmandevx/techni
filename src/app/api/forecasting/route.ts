@@ -1,201 +1,128 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  generateForecast,
-  analyzeTrend,
-  calculateAggregateMetrics,
-  calculateForecastAccuracy,
-  calculateMAPE,
-  calculateRMSE,
-  calculateBias,
-  type ForecastMethod,
-} from '@/lib/forecasting';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-/**
- * POST /api/forecasting
- * Generate forecasts using various algorithms
- */
-export async function POST(request: NextRequest) {
+interface ForecastWithMaterial {
+  materialId: string;
+  month: Date;
+  forecastDemand: number;
+  actualDemand: number | null;
+  forecastAccuracy: number | null;
+  modelUsed: string;
+  material: {
+    id: string;
+    description: string;
+  };
+}
+
+interface MonthlyData {
+  forecast: number;
+  actual: number;
+  count: number;
+}
+
+export async function GET() {
   try {
-    const body = await request.json();
-    const {
-      historicalSales,
-      method = 'holt',
-      periods = 3,
-      alpha = 0.3,
-      beta = 0.1,
-      seasonLength = 12,
-    } = body;
-
-    if (!historicalSales || !Array.isArray(historicalSales)) {
-      return NextResponse.json(
-        { success: false, message: 'Historical sales data is required' },
-        { status: 400 }
-      );
-    }
-
-    // Generate forecast
-    const forecast = generateForecast(historicalSales, {
-      method: method as ForecastMethod,
-      periods,
-      alpha,
-      beta,
-      seasonLength,
+    // Fetch forecast records with material info
+    const forecasts = await prisma.forecastRecord.findMany({
+      orderBy: [{ materialId: 'asc' }, { month: 'desc' }],
+      include: {
+        material: true,
+      },
     });
 
-    // Analyze trend
-    const trend = analyzeTrend(historicalSales);
+    // Group by material
+    const groupedByMaterial: Record<string, any[]> = {};
+    forecasts.forEach((f: ForecastWithMaterial) => {
+      if (!groupedByMaterial[f.materialId]) {
+        groupedByMaterial[f.materialId] = [];
+      }
+      groupedByMaterial[f.materialId].push({
+        month: f.month.toISOString(),
+        forecastDemand: f.forecastDemand,
+        actualDemand: f.actualDemand,
+        accuracy: f.forecastAccuracy,
+        modelUsed: f.modelUsed,
+      });
+    });
 
-    // Generate multi-period forecasts
-    const forecasts = Array.from({ length: periods }, (_, i) =>
-      generateForecast(historicalSales, {
-        method: method as ForecastMethod,
-        periods: i + 1,
-        alpha,
-        beta,
-        seasonLength,
-      })
+    // Calculate overall accuracy
+    const recordsWithActual = forecasts.filter((f: ForecastWithMaterial) => f.actualDemand !== null);
+    const overallAccuracy = recordsWithActual.length > 0
+      ? recordsWithActual.reduce((sum: number, f: ForecastWithMaterial) => sum + (f.forecastAccuracy || 0), 0) / recordsWithActual.length
+      : 0;
+
+    // Calculate monthly trends
+    const monthlyData: Record<string, MonthlyData> = {};
+    forecasts.forEach((f: ForecastWithMaterial) => {
+      const monthKey = f.month.toISOString().slice(0, 7); // YYYY-MM
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { forecast: 0, actual: 0, count: 0 };
+      }
+      monthlyData[monthKey].forecast += f.forecastDemand;
+      monthlyData[monthKey].actual += f.actualDemand || 0;
+      monthlyData[monthKey].count += 1;
+    });
+
+    const trends = Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]: [string, MonthlyData]) => ({
+        month,
+        forecast: data.forecast,
+        actual: data.actual,
+        accuracy: data.actual > 0 
+          ? Math.round((1 - Math.abs(data.forecast - data.actual) / data.actual) * 100)
+          : null,
+      }));
+
+    return NextResponse.json({
+      success: true,
+      forecasts: groupedByMaterial,
+      overallAccuracy: Math.round(overallAccuracy * 10) / 10,
+      trends,
+      totalRecords: forecasts.length,
+    });
+  } catch (error) {
+    console.error('Error fetching forecasts:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to fetch forecasts' },
+      { status: 500 }
     );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    
+    // Create or update forecast
+    const forecast = await prisma.forecastRecord.upsert({
+      where: {
+        materialId_month: {
+          materialId: body.materialId,
+          month: new Date(body.month),
+        },
+      },
+      update: {
+        forecastDemand: body.forecastDemand,
+        modelUsed: body.modelUsed || 'manual',
+      },
+      create: {
+        materialId: body.materialId,
+        month: new Date(body.month),
+        forecastDemand: body.forecastDemand,
+        modelUsed: body.modelUsed || 'manual',
+      },
+    });
 
     return NextResponse.json({
       success: true,
       forecast,
-      forecasts,
-      trend,
-      method,
-      confidence: calculateConfidence(historicalSales, trend),
     });
   } catch (error) {
-    console.error('Forecasting error:', error);
+    console.error('Error creating forecast:', error);
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Forecasting failed' },
+      { success: false, message: 'Failed to create forecast' },
       { status: 500 }
     );
   }
-}
-
-/**
- * GET /api/forecasting/methods
- * Get available forecasting methods and their descriptions
- */
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action');
-
-    if (action === 'methods') {
-      const methods = [
-        {
-          id: 'sma',
-          name: 'Simple Moving Average',
-          description: 'Average of recent periods, good for stable demand',
-          complexity: 'low',
-          useCases: ['Stable demand', 'Short-term forecasting'],
-        },
-        {
-          id: 'wma',
-          name: 'Weighted Moving Average',
-          description: 'Weighted average favoring recent data',
-          complexity: 'low',
-          useCases: ['Recent trends matter', 'Gradual changes'],
-        },
-        {
-          id: 'ses',
-          name: 'Simple Exponential Smoothing',
-          description: 'Exponential decay weighting, responsive to changes',
-          complexity: 'medium',
-          useCases: ['No trend or seasonality', 'Responsive forecasting'],
-        },
-        {
-          id: 'holt',
-          name: "Holt's Method",
-          description: 'Trend-adjusted exponential smoothing',
-          complexity: 'medium',
-          useCases: ['Trending data', 'Medium-term forecasting'],
-        },
-        {
-          id: 'linear',
-          name: 'Linear Regression',
-          description: 'Linear trend projection using least squares',
-          complexity: 'medium',
-          useCases: ['Strong linear trends', 'Statistical analysis'],
-        },
-        {
-          id: 'seasonal',
-          name: 'Seasonal Decomposition',
-          description: 'Accounts for seasonal patterns',
-          complexity: 'high',
-          useCases: ['Seasonal products', 'Annual cycles'],
-        },
-      ];
-
-      return NextResponse.json({
-        success: true,
-        methods,
-      });
-    }
-
-    // Calculate metrics endpoint
-    if (action === 'metrics') {
-      const historicalSalesParam = searchParams.get('historical');
-      const forecastsParam = searchParams.get('forecasts');
-
-      if (!historicalSalesParam || !forecastsParam) {
-        return NextResponse.json(
-          { success: false, message: 'Historical and forecast data required' },
-          { status: 400 }
-        );
-      }
-
-      const historicalSales = JSON.parse(historicalSalesParam);
-      const forecasts = JSON.parse(forecastsParam);
-
-      const mape = calculateMAPE(historicalSales, forecasts);
-      const rmse = calculateRMSE(historicalSales, forecasts);
-      const bias = calculateBias(historicalSales, forecasts);
-
-      return NextResponse.json({
-        success: true,
-        metrics: {
-          mape,
-          rmse,
-          bias,
-          accuracy: Math.max(0, 100 - mape),
-        },
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Forecasting API - Use ?action=methods or POST to generate forecasts',
-    });
-  } catch (error) {
-    console.error('GET error:', error);
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Request failed' },
-      { status: 500 }
-    );
-  }
-}
-
-// Helper function to calculate confidence score
-function calculateConfidence(historicalSales: number[], trend: any): number {
-  if (historicalSales.length < 3) return 50;
-  
-  // Base confidence on data length and trend strength
-  const dataQualityScore = Math.min(historicalSales.length / 12, 1) * 40;
-  const trendScore = trend.strength * 0.4;
-  const varianceScore = calculateVarianceScore(historicalSales) * 20;
-  
-  return Math.round(Math.min(95, dataQualityScore + trendScore + varianceScore));
-}
-
-function calculateVarianceScore(data: number[]): number {
-  if (data.length < 2) return 0;
-  
-  const mean = data.reduce((a, b) => a + b, 0) / data.length;
-  const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
-  const cv = Math.sqrt(variance) / mean;
-  
-  // Lower CV = higher score
-  return Math.max(0, 1 - cv);
 }

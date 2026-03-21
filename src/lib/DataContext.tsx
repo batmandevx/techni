@@ -1,8 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { useExcelData } from './hooks/useLocalStorage';
-import { MATERIALS, MONTHS, HISTORICAL_DATA, CUSTOMERS as DEFAULT_CUSTOMERS } from './mock-data';
 
 // Types
 export interface Material {
@@ -17,6 +15,11 @@ export interface Material {
   serviceLevel?: number;
   orderingCost?: number;
   holdingCostPct?: number;
+  currentStock?: number;
+  safetyStock?: number;
+  stockInTransit?: number;
+  forecastDemand?: number;
+  orderCount?: number;
 }
 
 export interface Customer {
@@ -28,6 +31,8 @@ export interface Customer {
   salesOrg: string;
   distChannel: string;
   division: string;
+  isActive?: boolean;
+  orderCount?: number;
 }
 
 export interface Order {
@@ -44,6 +49,8 @@ export interface Order {
   lines?: Array<{
     materialId: string;
     quantity: number;
+    unitPrice: number;
+    lineTotal: number;
     material?: Material;
   }>;
 }
@@ -85,29 +92,26 @@ interface DataContextType {
   alerts: any[];
   hasUploadedData: boolean;
   isLoading: boolean;
-  excelFileName?: string;
-  excelUploadDate?: string;
+  error: string | null;
   refreshData: () => Promise<void>;
   updateData: (data: any) => void;
   clearUploadedData: () => void;
-  // Excel preview data
   excelPreviewData: {
     headers: string[];
     rows: any[];
     type: 'orders' | 'customers' | 'materials' | null;
   } | null;
   setExcelPreviewData: (data: any) => void;
-  // Dashboard data
   demandTrend: { month: string; forecast: number; actual: number }[];
 }
 
 // Default values
 const defaultKPIs: KPIs = {
-  forecastAccuracy: 92.5,
-  inventoryTurns: 8.3,
-  fillRate: 96.8,
-  stockCoverage: 18.5,
-  stockoutRisk: 12,
+  forecastAccuracy: 0,
+  inventoryTurns: 0,
+  fillRate: 0,
+  stockCoverage: 0,
+  stockoutRisk: 0,
   totalOrders: 0,
   totalRevenue: 0,
   activeCustomers: 0,
@@ -116,167 +120,53 @@ const defaultKPIs: KPIs = {
 };
 
 const defaultAlerts = [
-  { id: 1, type: 'warning', message: 'Upload data to see personalized alerts', time: 'Now' },
+  { id: 1, type: 'info', message: 'Loading data from database...', time: 'Now' },
 ];
 
-// Default demand trend data
-const defaultDemandTrend = [
-  { month: 'Jan', forecast: 1200, actual: 1150 },
-  { month: 'Feb', forecast: 1350, actual: 1400 },
-  { month: 'Mar', forecast: 1500, actual: 1480 },
-  { month: 'Apr', forecast: 1450, actual: 1520 },
-  { month: 'May', forecast: 1600, actual: 1580 },
-  { month: 'Jun', forecast: 1750, actual: 1800 },
-];
+// Generate months
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Create context
 const DataContext = createContext<DataContextType>({
-  customers: DEFAULT_CUSTOMERS,
-  materials: MATERIALS,
+  customers: [],
+  materials: [],
   orders: [],
   kpis: defaultKPIs,
-  historicalData: HISTORICAL_DATA,
+  historicalData: {},
   months: MONTHS,
   alerts: defaultAlerts,
   hasUploadedData: false,
   isLoading: true,
-  excelPreviewData: null,
-  setExcelPreviewData: () => {},
+  error: null,
   refreshData: async () => {},
   updateData: () => {},
   clearUploadedData: () => {},
-  demandTrend: defaultDemandTrend,
+  excelPreviewData: null,
+  setExcelPreviewData: () => {},
+  demandTrend: [],
 });
-
-// Helper to aggregate historical data from orders
-function aggregateHistoricalData(
-  orders: Order[],
-  materials: Material[],
-  months: string[]
-): Record<string, HistoricalDataPoint[]> {
-  const data: Record<string, HistoricalDataPoint[]> = {};
-  
-  // Initialize with empty data for each material
-  materials.forEach(mat => {
-    data[mat.id] = months.map(month => ({
-      month,
-      actualSales: 0,
-      forecast: Math.round(Math.random() * 2000 + 1000), // Default forecast
-      openingStock: Math.round(Math.random() * 3000 + 1000),
-      stockInTransit: Math.round(Math.random() * 1000 + 200),
-      safetyStock: Math.round(Math.random() * 500 + 200),
-    }));
-  });
-  
-  // Aggregate actual sales from orders
-  orders.forEach(order => {
-    const orderDate = new Date(order.orderDate);
-    const monthKey = orderDate.toLocaleString('en-US', { month: 'short', year: 'numeric' });
-    
-    // Find matching month in our data
-    materials.forEach(mat => {
-      const monthData = data[mat.id]?.find(m => m.month.includes(orderDate.getFullYear().toString()));
-      if (monthData && order.materialId === mat.id) {
-        monthData.actualSales += order.quantity;
-      }
-    });
-  });
-  
-  return data;
-}
-
-// Helper to calculate KPIs from data
-function calculateKPIs(orders: Order[], customers: Customer[]): KPIs {
-  if (orders.length === 0) return defaultKPIs;
-  
-  const totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-  const fulfilledOrders = orders.filter(o => 
-    o.status === 'DELIVERED' || o.status === 'INVOICED'
-  ).length;
-  const fillRate = orders.length > 0 ? (fulfilledOrders / orders.length) * 100 : 0;
-  
-  return {
-    forecastAccuracy: 85 + Math.random() * 10,
-    inventoryTurns: 6 + Math.random() * 4,
-    fillRate,
-    stockCoverage: 10 + Math.random() * 20,
-    stockoutRisk: Math.random() * 20,
-    totalOrders: orders.length,
-    totalRevenue,
-    activeCustomers: customers.length,
-    lowStockItems: Math.floor(Math.random() * 5),
-    pendingOrders: orders.filter(o => o.status === 'PENDING' || o.status === 'Created').length,
-  };
-}
 
 // Provider component
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const { excelData, hasData: hasExcelData, clearExcelData } = useExcelData();
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [excelPreviewData, setExcelPreviewData] = useState<any>(null);
   
   // State for data
-  const [customers, setCustomers] = useState<Customer[]>(DEFAULT_CUSTOMERS);
-  const [materials, setMaterials] = useState<Material[]>(MATERIALS);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [kpis, setKpis] = useState<KPIs>(defaultKPIs);
-  const [historicalData, setHistoricalData] = useState<Record<string, HistoricalDataPoint[]>>(HISTORICAL_DATA);
+  const [historicalData, setHistoricalData] = useState<Record<string, HistoricalDataPoint[]>>({});
+  const [alerts, setAlerts] = useState(defaultAlerts);
   
-  // Load data from localStorage/excel on mount
-  useEffect(() => {
-    if (hasExcelData && excelData) {
-      // Transform Excel customers to app format
-      const transformedCustomers: Customer[] = excelData.customers.map((c: any) => ({
-        id: c.customerId,
-        name: c.customerName,
-        city: c.shipToCity || 'Unknown',
-        country: c.country || 'Unknown',
-        paymentTerms: c.paymentTerms || 'D30',
-        salesOrg: c.salesOrg || '1000',
-        distChannel: c.distChannel || '10',
-        division: c.division || '0',
-      }));
-      
-      // Transform Excel orders to app format
-      const transformedOrders: Order[] = excelData.orders.map((o: any) => ({
-        orderId: o.orderId,
-        orderDate: o.orderDate,
-        customerId: o.customerId,
-        materialId: o.materialId,
-        quantity: o.quantity,
-        deliveryDate: o.deliveryDate,
-        status: o.status || 'Created',
-        totalAmount: o.quantity * (MATERIALS.find(m => m.id === o.materialId)?.priceUSD || 100),
-      }));
-      
-      // Enrich orders with customer data
-      const enrichedOrders = transformedOrders.map(order => ({
-        ...order,
-        customer: transformedCustomers.find(c => c.id === order.customerId) || DEFAULT_CUSTOMERS.find(c => c.id === order.customerId),
-        material: MATERIALS.find(m => m.id === order.materialId),
-      }));
-      
-      setCustomers(transformedCustomers.length > 0 ? transformedCustomers : DEFAULT_CUSTOMERS);
-      setOrders(enrichedOrders);
-      
-      // Calculate KPIs
-      const calculatedKPIs = calculateKPIs(enrichedOrders, transformedCustomers);
-      setKpis(calculatedKPIs);
-      
-      // Generate historical data from orders
-      const aggHistoricalData = aggregateHistoricalData(enrichedOrders, MATERIALS, MONTHS);
-      setHistoricalData(aggHistoricalData);
-    }
-    
-    setIsLoading(false);
-  }, [hasExcelData, excelData]);
-  
-  // Refresh data function
+  // Fetch all data from APIs
   const refreshData = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     
     try {
-      // Fetch from APIs
+      // Fetch from all APIs in parallel
       const [dashboardRes, ordersRes, customersRes, materialsRes] = await Promise.all([
         fetch('/api/dashboard'),
         fetch('/api/orders'),
@@ -284,13 +174,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         fetch('/api/materials'),
       ]);
       
+      // Process dashboard data
       if (dashboardRes.ok) {
         const dashboardData = await dashboardRes.json();
         if (dashboardData.success) {
-          setKpis(prev => ({ ...prev, ...dashboardData.kpis }));
+          setKpis(dashboardData.kpis);
+          setAlerts([
+            { id: 1, type: 'success', message: 'Data loaded successfully', time: 'Just now' },
+            ...(dashboardData.kpis.lowStockItems > 0 ? [{
+              id: 2,
+              type: 'warning',
+              message: `${dashboardData.kpis.lowStockItems} items are low on stock`,
+              time: 'Just now'
+            }] : []),
+          ]);
         }
       }
       
+      // Process orders
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
         if (ordersData.success) {
@@ -298,6 +199,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
+      // Process customers
       if (customersRes.ok) {
         const customersData = await customersRes.json();
         if (customersData.success) {
@@ -305,17 +207,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
+      // Process materials
       if (materialsRes.ok) {
         const materialsData = await materialsRes.json();
         if (materialsData.success) {
           setMaterials(materialsData.materials);
         }
       }
-    } catch (error) {
-      console.error('Error refreshing data:', error);
+      
+      // Generate historical data from materials
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      const newHistoricalData: Record<string, HistoricalDataPoint[]> = {};
+      
+      materials.forEach(material => {
+        newHistoricalData[material.id] = months.map((month, i) => ({
+          month,
+          actualSales: Math.round(Math.random() * 1000) + 200,
+          forecast: Math.round(Math.random() * 1000) + 200,
+          openingStock: Math.round(Math.random() * 3000) + 1000,
+          stockInTransit: Math.round(Math.random() * 500) + 100,
+          safetyStock: Math.round(Math.random() * 500) + 200,
+        }));
+      });
+      
+      setHistoricalData(newHistoricalData);
+      
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load data from server');
+      setAlerts([{ id: 1, type: 'error', message: 'Failed to load data', time: 'Just now' }]);
     } finally {
       setIsLoading(false);
     }
+  }, [materials]);
+
+  // Load data on mount
+  useEffect(() => {
+    refreshData();
   }, []);
   
   // Update data from external source
@@ -328,16 +256,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   
   // Clear all uploaded data
   const clearUploadedData = useCallback(() => {
-    clearExcelData();
-    setCustomers(DEFAULT_CUSTOMERS);
-    setOrders([]);
-    setKpis(defaultKPIs);
-    setHistoricalData(HISTORICAL_DATA);
-  }, [clearExcelData]);
+    refreshData(); // Reload from database
+  }, [refreshData]);
   
   // Calculate demand trend from historical data
   const demandTrend = useMemo(() => {
-    const months = Object.values(HISTORICAL_DATA)[0]?.map(d => d.month) || [];
+    const months = Object.values(historicalData)[0]?.map(d => d.month) || MONTHS.slice(0, 6);
     return months.map((month, i) => {
       let totalForecast = 0;
       let totalActual = 0;
@@ -346,7 +270,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         totalActual += data[i]?.actualSales || 0;
       });
       return {
-        month: month.slice(0, 3),
+        month,
         forecast: totalForecast,
         actual: totalActual,
       };
@@ -360,11 +284,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     kpis,
     historicalData,
     months: MONTHS,
-    alerts: defaultAlerts,
-    hasUploadedData: hasExcelData || orders.length > 0,
+    alerts,
+    hasUploadedData: orders.length > 0 || customers.length > 0,
     isLoading,
-    excelFileName: excelData?.fileName,
-    excelUploadDate: excelData?.uploadedAt,
+    error,
     refreshData,
     updateData,
     clearUploadedData,
@@ -377,9 +300,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     orders,
     kpis,
     historicalData,
-    hasExcelData,
+    alerts,
     isLoading,
-    excelData,
+    error,
     refreshData,
     updateData,
     clearUploadedData,

@@ -179,12 +179,11 @@ export default function ForecastingPage() {
     return Math.round(validAccuracies.reduce((sum, m) => sum + m.accuracy, 0) / validAccuracies.length * 10) / 10;
   }, [materialAccuracyData]);
 
-  // Demand vs Actual chart data
+  // Demand vs Actual chart data — adjusted by forecast method
   const demandTrendData = useMemo(() => {
-    return MONTHS.map((month, index) => {
+    const base = MONTHS.map((month, index) => {
       let totalActual = 0;
       let totalForecast = 0;
-      
       Object.values(historicalData).forEach(matData => {
         const monthData = matData[index];
         if (monthData) {
@@ -192,15 +191,34 @@ export default function ForecastingPage() {
           totalForecast += monthData.forecast || 0;
         }
       });
-      
+      return { month: month.split(' ')[0], actual: totalActual, rawForecast: totalForecast };
+    });
+
+    // Apply forecast method transformation to the forecast line
+    const alpha = 0.3; // Exponential smoothing factor
+    let smoothed = base[0]?.rawForecast || 0;
+
+    return base.map((d, i) => {
+      let forecast = d.rawForecast;
+      if (forecastMethod === 'moving-average' && i >= 2) {
+        forecast = Math.round((base[i - 2].rawForecast + base[i - 1].rawForecast + d.rawForecast) / 3);
+      } else if (forecastMethod === 'exponential') {
+        smoothed = Math.round(alpha * d.rawForecast + (1 - alpha) * smoothed);
+        forecast = smoothed;
+      } else if (forecastMethod === 'weighted' && i >= 2) {
+        forecast = Math.round((base[i - 2].rawForecast * 1 + base[i - 1].rawForecast * 2 + d.rawForecast * 3) / 6);
+      } else if (forecastMethod === 'linear-trend') {
+        const slope = i > 0 ? (d.rawForecast - base[0].rawForecast) / Math.max(i, 1) : 0;
+        forecast = Math.round(base[0].rawForecast + slope * i);
+      }
       return {
-        month: month.split(' ')[0], // Short month name
-        actual: totalActual,
-        forecast: totalForecast,
-        variance: totalForecast - totalActual,
+        month: d.month,
+        actual: d.actual,
+        forecast,
+        variance: forecast - d.actual,
       };
     });
-  }, [historicalData]);
+  }, [historicalData, forecastMethod]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
@@ -217,11 +235,17 @@ export default function ForecastingPage() {
                 AI-powered demand predictions and forecast accuracy analysis
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
-                <RefreshCw size={16} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={forecastMethod}
+                onChange={(e) => setForecastMethod(e.target.value)}
+                className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer"
+              >
+                <option value="moving-average">Moving Average (3M)</option>
+                <option value="exponential">Exponential Smoothing</option>
+                <option value="weighted">Weighted Moving Avg</option>
+                <option value="linear-trend">Linear Trend</option>
+              </select>
               <button onClick={handleExport} className="flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors">
                 <Download size={16} />
                 <span className="hidden sm:inline">Export</span>
@@ -279,7 +303,11 @@ export default function ForecastingPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 dark:text-slate-400">AI Model</p>
-                <p className="text-sm font-bold text-gray-900 dark:text-white">Moving Average</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white">
+                  {forecastMethod === 'moving-average' ? 'Moving Avg (3M)' :
+                   forecastMethod === 'exponential' ? 'Exp. Smoothing' :
+                   forecastMethod === 'weighted' ? 'Weighted MA' : 'Linear Trend'}
+                </p>
               </div>
             </div>
           </motion.div>
