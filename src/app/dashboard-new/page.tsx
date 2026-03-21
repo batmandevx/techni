@@ -48,6 +48,7 @@ import { ModernChart } from '@/components/dashboard/ModernChart';
 import { InventoryTracker } from '@/components/dashboard/InventoryTracker';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 import { SmartGreeting } from '@/components/dashboard/SmartGreeting';
+import { ExportWidget } from '@/components/dashboard/ExportWidget';
 import {
   MultiAxisChart,
   StackedBarChart,
@@ -806,7 +807,7 @@ export default function ModernDashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[
               { label: 'Create Order', icon: ShoppingCart, color: 'from-indigo-500 to-blue-600' },
               { label: 'Add Product', icon: Package, color: 'from-emerald-500 to-teal-600' },
@@ -822,6 +823,7 @@ export default function ModernDashboard() {
                 </motion.button>
               );
             })}
+            <ExportWidget />
           </div>
         </div>
       </main>

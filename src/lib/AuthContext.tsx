@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Protected route check
   useEffect(() => {
     if (!isLoading) {
-      const publicPaths = ['/auth', '/login', '/signup'];
+      const publicPaths = ['/auth', '/login', '/signup', '/dashboard-new'];
       const isPublicPath = publicPaths.some(path => pathname?.startsWith(path));
       
       if (!user && !isPublicPath && pathname !== '/') {
