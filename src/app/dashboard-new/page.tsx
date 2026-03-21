@@ -37,6 +37,10 @@ import {
   Box,
   MapPin,
   CreditCard,
+  Hexagon,
+  Radar,
+  Grid3X3,
+  Share2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ModernKPI } from '@/components/dashboard/ModernKPI';
@@ -55,6 +59,17 @@ import {
   GaugeChart,
   WaterfallChart,
   FunnelChartComponent,
+  SpiderWebChart,
+  HoneycombChart,
+  PieChart3D,
+  NightingaleRoseChart,
+  BubbleChart,
+  WaffleChart,
+  MultiRadialChart,
+  StepChart,
+  CalendarHeatmap,
+  FlowChart,
+  PolarAreaChart,
 } from '@/components/dashboard/AdvancedCharts';
 
 // Comprehensive mock data
@@ -93,6 +108,23 @@ const donutData = [
   { name: 'Mobile', value: 35, color: '#10b981' },
   { name: 'Tablet', value: 15, color: '#f59e0b' },
   { name: 'Other', value: 5, color: '#64748b' },
+];
+
+const pie3DData = [
+  { name: 'Electronics', value: 35, color: '#6366f1' },
+  { name: 'Clothing', value: 25, color: '#10b981' },
+  { name: 'Home', value: 20, color: '#f59e0b' },
+  { name: 'Sports', value: 12, color: '#ef4444' },
+  { name: 'Books', value: 8, color: '#8b5cf6' },
+];
+
+const nightingaleData = [
+  { name: 'Q1', value: 45, color: '#6366f1' },
+  { name: 'Q2', value: 65, color: '#10b981' },
+  { name: 'Q3', value: 55, color: '#f59e0b' },
+  { name: 'Q4', value: 80, color: '#ef4444' },
+  { name: 'Q5', value: 35, color: '#8b5cf6' },
+  { name: 'Q6', value: 50, color: '#06b6d4' },
 ];
 
 const horizontalData = [
@@ -135,6 +167,86 @@ const funnelData = [
   { name: 'Add to Cart', value: 3200, fill: '#a855f7' },
   { name: 'Checkout', value: 1800, fill: '#d946ef' },
   { name: 'Purchases', value: 950, fill: '#ec4899' },
+];
+
+// Spider Web Data - Multi-layer
+const spiderWebData = [
+  { subject: 'Fulfillment', A: 85, B: 90, C: 75 },
+  { subject: 'Inventory', A: 78, B: 85, C: 70 },
+  { subject: 'Forecast', A: 92, B: 88, C: 80 },
+  { subject: 'Quality', A: 88, B: 92, C: 85 },
+  { subject: 'Delivery', A: 75, B: 80, C: 70 },
+  { subject: 'Returns', A: 65, B: 70, C: 60 },
+  { subject: 'Cost', A: 82, B: 85, C: 78 },
+  { subject: 'Speed', A: 90, B: 88, C: 82 },
+];
+
+// Honeycomb Data
+const honeycombData = [
+  { name: 'Sales', value: 85, color: '#6366f1' },
+  { name: 'Profit', value: 72, color: '#10b981' },
+  { name: 'Growth', value: 68, color: '#f59e0b' },
+  { name: 'Retention', value: 91, color: '#ef4444' },
+  { name: 'NPS', value: 76, color: '#8b5cf6' },
+  { name: 'CSAT', value: 88, color: '#06b6d4' },
+  { name: 'Efficiency', value: 65, color: '#ec4899' },
+  { name: 'Quality', value: 94, color: '#84cc16' },
+];
+
+// Bubble Chart Data (BCG Matrix style)
+const bubbleData = [
+  { x: 25, y: 20, z: 500, name: 'Product A', category: 'Stars' },
+  { x: 10, y: 25, z: 800, name: 'Product B', category: 'Cash Cows' },
+  { x: 30, y: 8, z: 300, name: 'Product C', category: 'Question Marks' },
+  { x: 5, y: 5, z: 200, name: 'Product D', category: 'Dogs' },
+  { x: 35, y: 22, z: 600, name: 'Product E', category: 'Stars' },
+  { x: 8, y: 28, z: 900, name: 'Product F', category: 'Cash Cows' },
+  { x: 22, y: 12, z: 400, name: 'Product G', category: 'Question Marks' },
+  { x: 2, y: 3, z: 150, name: 'Product H', category: 'Dogs' },
+];
+
+// Multi Radial Data
+const multiRadialData = [
+  { name: 'Q1 Sales', value: 85, fill: '#6366f1' },
+  { name: 'Q2 Sales', value: 92, fill: '#10b981' },
+  { name: 'Q3 Sales', value: 78, fill: '#f59e0b' },
+  { name: 'Q4 Sales', value: 95, fill: '#ef4444' },
+];
+
+// Step Chart Data
+const stepData = [
+  { name: 'Jan', value: 40, target: 45 },
+  { name: 'Feb', value: 45, target: 45 },
+  { name: 'Mar', value: 42, target: 50 },
+  { name: 'Apr', value: 55, target: 50 },
+  { name: 'May', value: 58, target: 55 },
+  { name: 'Jun', value: 65, target: 60 },
+  { name: 'Jul', value: 62, target: 65 },
+];
+
+// Calendar Heatmap Data
+const calendarData = [...Array(70)].map((_, i) => ({
+  date: `Day ${i + 1}`,
+  value: Math.floor(Math.random() * 100),
+}));
+
+// Flow Chart Data
+const flowData = [
+  { stage: 'Leads', value: 1000, color: '#6366f1' },
+  { stage: 'Qualified', value: 650, color: '#8b5cf6' },
+  { stage: 'Proposal', value: 420, color: '#a855f7' },
+  { stage: 'Negotiation', value: 280, color: '#d946ef' },
+  { stage: 'Closed', value: 185, color: '#ec4899' },
+];
+
+// Polar Area Data
+const polarAreaData = [
+  { name: 'North', value: 85, fullMark: 100 },
+  { name: 'South', value: 65, fullMark: 100 },
+  { name: 'East', value: 78, fullMark: 100 },
+  { name: 'West', value: 92, fullMark: 100 },
+  { name: 'Central', value: 70, fullMark: 100 },
+  { name: 'Online', value: 95, fullMark: 100 },
 ];
 
 const revenueData = [
@@ -433,13 +545,84 @@ export default function ModernDashboard() {
             </div>
           </div>
 
+          {/* NEW: Charts Row 3 - Spider Web & Honeycomb */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Radar className="w-5 h-5 text-indigo-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Spider Web Analysis</h3>
+                    <p className="text-sm text-gray-400">Multi-layer KPI comparison</p>
+                  </div>
+                </div>
+              </div>
+              <SpiderWebChart data={spiderWebData} />
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Hexagon className="w-5 h-5 text-purple-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Honeycomb Metrics</h3>
+                    <p className="text-sm text-gray-400">Hexagonal performance grid</p>
+                  </div>
+                </div>
+              </div>
+              <HoneycombChart data={honeycombData} />
+            </div>
+          </div>
+
+          {/* NEW: Charts Row 4 - Pie Charts & Rose */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <PieChart className="w-5 h-5 text-pink-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">3D Pie Chart</h3>
+                    <p className="text-sm text-gray-400">Interactive segments</p>
+                  </div>
+                </div>
+              </div>
+              <PieChart3D data={pie3DData} />
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-orange-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Nightingale Rose</h3>
+                    <p className="text-sm text-gray-400">Polar area distribution</p>
+                  </div>
+                </div>
+              </div>
+              <NightingaleRoseChart data={nightingaleData} />
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Share2 className="w-5 h-5 text-cyan-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">BCG Matrix</h3>
+                    <p className="text-sm text-gray-400">Portfolio analysis</p>
+                  </div>
+                </div>
+              </div>
+              <BubbleChart data={bubbleData} />
+            </div>
+          </div>
+
           {/* Middle Section: Inventory + Activity */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <InventoryTracker />
             <ActivityFeed />
           </div>
 
-          {/* Charts Row 3 - More Visualizations */}
+          {/* Charts Row 5 - More Visualizations */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
               <div className="flex items-center justify-between mb-4">
@@ -472,7 +655,97 @@ export default function ModernDashboard() {
             </div>
           </div>
 
-          {/* Charts Row 4 - Gauges and Performance */}
+          {/* NEW: Charts Row 6 - Waffle, Multi-Radial, Step */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Grid3X3 className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Target Progress</h3>
+                    <p className="text-sm text-gray-400">Waffle visualization</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-center">
+                <WaffleChart percentage={78} label="Q3 Target Achieved" color="#10b981" />
+              </div>
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Quarterly Rings</h3>
+                  <p className="text-sm text-gray-400">Multi-radial comparison</p>
+                </div>
+              </div>
+              <MultiRadialChart data={multiRadialData} />
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Step Progress</h3>
+                  <p className="text-sm text-gray-400">Discrete milestones</p>
+                </div>
+              </div>
+              <StepChart data={stepData} />
+            </div>
+          </div>
+
+          {/* NEW: Charts Row 7 - Calendar Heatmap & Flow */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Activity Heatmap</h3>
+                    <p className="text-sm text-gray-400">Daily order intensity</p>
+                  </div>
+                </div>
+              </div>
+              <CalendarHeatmap data={calendarData} />
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Sales Flow</h3>
+                    <p className="text-sm text-gray-400">Pipeline conversion</p>
+                  </div>
+                </div>
+              </div>
+              <FlowChart data={flowData} />
+            </div>
+          </div>
+
+          {/* NEW: Charts Row 8 - Polar Area & Treemap */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Regional Sales</h3>
+                  <p className="text-sm text-gray-400">Polar area by region</p>
+                </div>
+              </div>
+              <PolarAreaChart data={polarAreaData} />
+            </div>
+
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Category Treemap</h3>
+                  <p className="text-sm text-gray-400">Hierarchical breakdown</p>
+                </div>
+              </div>
+              <TreemapChart data={treemapData} />
+            </div>
+          </div>
+
+          {/* Charts Row 9 - Gauges and Performance */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl p-6">
               <h3 className="text-lg font-semibold text-white mb-2">Service Level</h3>
@@ -495,7 +768,7 @@ export default function ModernDashboard() {
             </div>
           </div>
 
-          {/* Charts Row 5 - Full Width Charts */}
+          {/* Charts Row 10 - Full Width Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ModernChart title="Revenue Overview" subtitle="Monthly revenue vs target" data={revenueData} type="area" dataKeys={['revenue', 'target']} colors={['#6366f1', '#10b981']} height={350} />
             <ModernChart title="Order Status" subtitle="Current order distribution" data={orderStatusData} type="pie" height={350} />
