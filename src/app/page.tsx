@@ -20,6 +20,8 @@ import Link from 'next/link';
 import { useData } from '@/lib/DataContext';
 import { performABCAnalysis, calculateClosingStock, processInventoryRecord } from '@/lib/forecasting';
 import { MATERIALS, HISTORICAL_DATA, MONTHS, ALERTS, CUSTOMERS, SAMPLE_ORDERS } from '@/lib/mock-data';
+import { SmartGreeting } from '@/components/dashboard/SmartGreeting';
+import { ExportWidget } from '@/components/dashboard/ExportWidget';
 
 // ─── Animated Counter ────────────────────────────────────────────────────────
 function AnimatedCounter({ value, suffix = '', prefix = '', decimals = 0 }: {
@@ -404,19 +406,18 @@ export default function Dashboard() {
                   </span>
                 </motion.div>
               )}
-              <Link href="/reports">
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-medium shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all">
-                  <Download className="w-3.5 h-3.5" />
-                  Export
-                </motion.button>
-              </Link>
+              <div className="hidden sm:block">
+                <ExportWidget />
+              </div>
             </div>
           </div>
         </div>
       </motion.div>
 
       <div className="px-4 sm:px-6 py-6 max-w-[1600px] mx-auto space-y-6">
+
+        {/* ── SMART GREETING ─────────────────────────────────────────── */}
+        <SmartGreeting userName="Admin" />
 
         {/* ── ROW 1: HERO KPI CARDS ──────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
