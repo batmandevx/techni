@@ -255,16 +255,21 @@ function AnimatedBackground() {
   );
 }
 
-// User Profile Dropdown with Logout
-function UserProfileDropdown() {
-  const [isOpen, setIsOpen] = useState(false);
+// Main Layout Content
+function LayoutContent({ children }: { children: React.ReactNode }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showSKUModal, setShowSKUModal] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const pathname = usePathname();
+  const { ToastContainer } = useToast();
   const { logout, user } = useAuth();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+        setDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -273,68 +278,12 @@ function UserProfileDropdown() {
 
   const handleLogout = () => {
     logout();
-    setIsOpen(false);
+    setDropdownOpen(false);
   };
 
   const initials = user?.name?.split(' ').map(n => n[0]).join('') || 'AD';
   const displayName = user?.name || 'Admin';
   const role = user?.role || 'Administrator';
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-500/20 transition-colors"
-      >
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-          {initials}
-        </div>
-        <div className="hidden sm:block text-left">
-          <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
-          <p className="text-xs text-gray-500 capitalize">{role}</p>
-        </div>
-        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 z-50 overflow-hidden"
-        >
-          <div className="p-4 border-b border-gray-200 dark:border-slate-700">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
-            <p className="text-xs text-gray-500">{user?.email || 'admin@tenchi.com'}</p>
-          </div>
-          
-          <div className="p-2">
-            <Link href="/settings" onClick={() => setIsOpen(false)}>
-              <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
-                <Settings className="w-4 h-4" />
-                <span className="text-sm">Settings</span>
-              </button>
-            </Link>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="text-sm">Sign Out</span>
-            </button>
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
-}
-
-// Main Layout Content
-function LayoutContent({ children }: { children: React.ReactNode }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showSKUModal, setShowSKUModal] = useState(false);
-  const pathname = usePathname();
-  const { ToastContainer } = useToast();
 
   // Compute real total stock value from mock data
   const totalStockValue = (() => {
@@ -477,7 +426,52 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               <CommandPalette />
               <Notifications />
-              <UserProfileDropdown />
+              {/* User Profile Dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-500/20 transition-colors"
+                >
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                    {initials}
+                  </div>
+                  <div className="hidden sm:block text-left">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
+                    <p className="text-xs text-gray-500 capitalize">{role}</p>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-90' : ''}`} />
+                </button>
+
+                {dropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 z-50 overflow-hidden"
+                  >
+                    <div className="p-4 border-b border-gray-200 dark:border-slate-700">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
+                      <p className="text-xs text-gray-500">{user?.email || 'admin@tenchi.com'}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <Link href="/settings" onClick={() => setDropdownOpen(false)}>
+                        <div className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+                          <Settings className="w-4 h-4" />
+                          <span className="text-sm">Settings</span>
+                        </div>
+                      </Link>
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span className="text-sm">Sign Out</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
             </div>
           </div>
         </div>
