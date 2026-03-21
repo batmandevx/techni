@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,7 +26,8 @@ import {
   ArrowUpRight,
   Layers,
   BoxIcon,
-  Calendar
+  Calendar,
+  LogOut
 } from 'lucide-react';
 import { DataProvider } from '@/lib/DataContext';
 import { AuthProvider } from '@/lib/AuthContext';
@@ -41,6 +42,7 @@ import { ErrorBoundary } from '@/components/error/ErrorBoundary';
 import { UIProvider } from '@/components/ui';
 import { performABCAnalysis } from '@/lib/forecasting';
 import { MATERIALS, HISTORICAL_DATA } from '@/lib/mock-data';
+import { useAuth } from '@/lib/AuthContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, badge: null },
@@ -253,6 +255,80 @@ function AnimatedBackground() {
   );
 }
 
+// User Profile Dropdown with Logout
+function UserProfileDropdown() {
+  const [isOpen, setIsOpen] = useState(false);
+  const { logout, user } = useAuth();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    setIsOpen(false);
+  };
+
+  const initials = user?.name?.split(' ').map(n => n[0]).join('') || 'AD';
+  const displayName = user?.name || 'Admin';
+  const role = user?.role || 'Administrator';
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-500/20 transition-colors"
+      >
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+          {initials}
+        </div>
+        <div className="hidden sm:block text-left">
+          <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
+          <p className="text-xs text-gray-500 capitalize">{role}</p>
+        </div>
+        <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 z-50 overflow-hidden"
+        >
+          <div className="p-4 border-b border-gray-200 dark:border-slate-700">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{displayName}</p>
+            <p className="text-xs text-gray-500">{user?.email || 'admin@tenchi.com'}</p>
+          </div>
+          
+          <div className="p-2">
+            <Link href="/settings" onClick={() => setIsOpen(false)}>
+              <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                <Settings className="w-4 h-4" />
+                <span className="text-sm">Settings</span>
+              </button>
+            </Link>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-sm">Sign Out</span>
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 // Main Layout Content
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -401,15 +477,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               <CommandPalette />
               <Notifications />
-              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                  AD
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Admin</p>
-                  <p className="text-xs text-gray-500">Administrator</p>
-                </div>
-              </div>
+              <UserProfileDropdown />
             </div>
           </div>
         </div>
