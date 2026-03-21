@@ -146,6 +146,11 @@ export default function OrdersPage() {
     return counts;
   }, [orders]);
 
+  // Total pipeline value — must be before any conditional returns (hooks rule)
+  const totalValue = useMemo(() => orders.reduce((sum, o) =>
+    sum + o.orderLines.reduce((s: number, l: any) => s + l.quantity * (l.material?.priceUSD ?? 0), 0), 0),
+  [orders]);
+
   // Export data
   const exportRows = filteredOrders.map(o => ({
     'Order ID': o.orderId,
@@ -174,43 +179,84 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-cyan-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
-        <div className="px-4 sm:px-6 py-4">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-slate-800/50"
+      >
+        <div className="px-4 sm:px-6 py-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Package className="w-7 h-7 text-indigo-500" />
+              <motion.h1
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-cyan-600 bg-clip-text text-transparent"
+              >
+                <div className="p-2 bg-gradient-to-br from-indigo-500 to-cyan-600 rounded-xl shadow-lg shadow-indigo-500/30">
+                  <Package className="h-6 w-6 text-white" />
+                </div>
                 Order Management
-              </h1>
-              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="mt-1.5 text-sm text-gray-500 dark:text-slate-400"
+              >
                 Track and manage sales orders across the supply chain
-              </p>
+              </motion.p>
             </div>
             <div className="flex items-center gap-2">
-              <button 
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={refreshOrders}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors text-sm"
               >
-                <RefreshCw size={18} />
+                <RefreshCw size={16} />
                 <span className="hidden sm:inline">Refresh</span>
-              </button>
+              </motion.button>
               <ExportButton
                 data={exportRows}
                 filename="orders"
                 onExport={() => showToast('Orders exported successfully!', 'success')}
               />
-              <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white transition-colors">
-                <Plus size={18} />
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-600 hover:from-indigo-600 hover:to-cyan-700 text-white transition-all shadow-lg shadow-indigo-500/30 text-sm font-medium"
+              >
+                <Plus size={16} />
                 <span className="hidden sm:inline">New Order</span>
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div className="px-4 sm:px-6 py-6 space-y-6">
+        {/* Pipeline Summary */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-3 gap-3"
+        >
+          {[
+            { label: 'Total Orders', value: orders.length.toLocaleString(), sub: 'all time', color: 'text-indigo-600 dark:text-indigo-400' },
+            { label: 'Pipeline Value', value: `$${totalValue >= 1000000 ? `${(totalValue / 1000000).toFixed(1)}M` : `${(totalValue / 1000).toFixed(1)}k`}`, sub: 'total value', color: 'text-emerald-600 dark:text-emerald-400' },
+            { label: 'Filtered Results', value: filteredOrders.length.toLocaleString(), sub: 'matching', color: 'text-cyan-600 dark:text-cyan-400' },
+          ].map((s) => (
+            <div key={s.label} className="bg-white dark:bg-slate-800/50 rounded-2xl border border-gray-200/50 dark:border-slate-700/50 px-4 py-3 flex items-center gap-3">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-slate-400">{s.label}</p>
+                <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+              </div>
+            </div>
+          ))}
+        </motion.div>
+
         {/* Status Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {statuses.filter(s => s !== 'ALL').map((status) => {

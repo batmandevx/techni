@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   TrendingUp, 
   Calendar, 
@@ -11,8 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  Sparkles,
-  RefreshCw
+  Sparkles
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -229,116 +228,128 @@ export default function ForecastingPage() {
         variance: forecast - d.actual,
       };
     });
-  }, [historicalData, forecastMethod]);
+  }, [historicalData, forecastMethod, selectedMaterial]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-purple-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
-        <div className="px-4 sm:px-6 py-4">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-slate-800/50"
+      >
+        <div className="px-4 sm:px-6 py-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                <TrendingUp className="h-6 w-6 text-indigo-500" />
+              <motion.h1
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent"
+              >
+                <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/30">
+                  <TrendingUp className="h-6 w-6 text-white" />
+                </div>
                 Demand Forecasting
-              </h1>
-              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="mt-1.5 text-sm text-gray-500 dark:text-slate-400"
+              >
                 AI-powered demand predictions and forecast accuracy analysis
-              </p>
+              </motion.p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <select
                 value={forecastMethod}
                 onChange={(e) => setForecastMethod(e.target.value)}
-                className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer"
+                className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-700 dark:text-slate-300 cursor-pointer shadow-sm"
               >
                 <option value="moving-average">Moving Average (3M)</option>
                 <option value="exponential">Exponential Smoothing</option>
                 <option value="weighted">Weighted Moving Avg</option>
                 <option value="linear-trend">Linear Trend</option>
               </select>
-              <button onClick={handleExport} className="flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleExport}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 px-4 py-2 text-sm font-medium text-white transition-all shadow-lg shadow-indigo-500/30"
+              >
                 <Download size={16} />
                 <span className="hidden sm:inline">Export</span>
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="px-4 sm:px-6 py-6 space-y-6">
+      <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-500/20">
-                <BarChart3 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+          {[
+            {
+              label: 'Overall Accuracy (M-1)',
+              value: `${overallAccuracy}%`,
+              icon: BarChart3,
+              gradient: 'from-indigo-500 to-indigo-600',
+              bg: 'bg-indigo-50 dark:bg-indigo-500/10',
+              iconColor: 'text-indigo-600 dark:text-indigo-400',
+              badge: overallAccuracy >= 90 ? { text: 'On Target', color: 'text-emerald-600 dark:text-emerald-400' } : { text: 'Review', color: 'text-amber-600 dark:text-amber-400' },
+              delay: 0,
+            },
+            {
+              label: 'Forecast Period',
+              value: '6 Months',
+              icon: Calendar,
+              gradient: 'from-emerald-500 to-teal-600',
+              bg: 'bg-emerald-50 dark:bg-emerald-500/10',
+              iconColor: 'text-emerald-600 dark:text-emerald-400',
+              badge: { text: 'Rolling', color: 'text-emerald-600 dark:text-emerald-400' },
+              delay: 0.05,
+            },
+            {
+              label: 'AI Model',
+              value: forecastMethod === 'moving-average' ? 'Moving Avg' :
+                     forecastMethod === 'exponential' ? 'Exp. Smoothing' :
+                     forecastMethod === 'weighted' ? 'Weighted MA' : 'Linear Trend',
+              icon: Sparkles,
+              gradient: 'from-amber-500 to-orange-600',
+              bg: 'bg-amber-50 dark:bg-amber-500/10',
+              iconColor: 'text-amber-600 dark:text-amber-400',
+              badge: { text: 'Active', color: 'text-amber-600 dark:text-amber-400' },
+              delay: 0.1,
+            },
+            {
+              label: 'Active SKUs',
+              value: `${materials.length}`,
+              icon: Filter,
+              gradient: 'from-purple-500 to-violet-600',
+              bg: 'bg-purple-50 dark:bg-purple-500/10',
+              iconColor: 'text-purple-600 dark:text-purple-400',
+              badge: { text: 'Tracked', color: 'text-purple-600 dark:text-purple-400' },
+              delay: 0.15,
+            },
+          ].map((kpi) => (
+            <motion.div
+              key={kpi.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: kpi.delay }}
+              whileHover={{ y: -2, scale: 1.01 }}
+              className="rounded-2xl border border-gray-200/50 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 p-4 shadow-sm hover:shadow-md transition-all"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${kpi.bg}`}>
+                  <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
+                </div>
+                <span className={`text-xs font-medium ${kpi.badge.color}`}>{kpi.badge.text}</span>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Overall Accuracy (M-1)</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{overallAccuracy}%</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-500/20">
-                <Calendar className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Forecast Period</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">6 Months</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-500/20">
-                <Sparkles className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">AI Model</p>
-                <p className="text-sm font-bold text-gray-900 dark:text-white">
-                  {forecastMethod === 'moving-average' ? 'Moving Avg (3M)' :
-                   forecastMethod === 'exponential' ? 'Exp. Smoothing' :
-                   forecastMethod === 'weighted' ? 'Weighted MA' : 'Linear Trend'}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-500/20">
-                <Filter className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Active SKUs</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{materials.length}</p>
-              </div>
-            </div>
-          </motion.div>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mb-1">{kpi.label}</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{kpi.value}</p>
+            </motion.div>
+          ))}
         </div>
 
         {/* Charts Row */}
@@ -514,6 +525,55 @@ export default function ForecastingPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Expandable monthly breakdown */}
+          <AnimatePresence>
+            {showAccuracyDetails && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden border-t border-gray-100 dark:border-slate-800"
+              >
+                <div className="px-4 sm:px-6 py-4">
+                  <h4 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">
+                    Monthly Accuracy Breakdown — All SKUs
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-slate-900/50">
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-slate-400">Month</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-slate-400">Total Actual</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-slate-400">Total Forecast</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-slate-400">Variance</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-slate-400">Accuracy</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {forecastAccuracyData.map((row) => (
+                          <tr key={row.month} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                            <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{row.month}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 dark:text-slate-400">{row.actual.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 dark:text-slate-400">{row.forecast.toLocaleString()}</td>
+                            <td className={`px-3 py-2 text-right font-medium ${row.forecast - row.actual > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                              {row.forecast - row.actual > 0 ? '+' : ''}{(row.forecast - row.actual).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={`font-medium ${row.accuracy >= 90 ? 'text-emerald-600' : row.accuracy >= 80 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {row.accuracy}%
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Info Banner */}

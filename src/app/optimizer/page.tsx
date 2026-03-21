@@ -11,8 +11,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Info,
-  Download,
-  RefreshCw
+  Download
 } from 'lucide-react';
 import { useData } from '@/lib/DataContext';
 import {
@@ -175,23 +174,38 @@ export default function OrderOptimizerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-emerald-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
-        <div className="px-4 sm:px-6 py-4">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-slate-800/50"
+      >
+        <div className="px-4 sm:px-6 py-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                <Package className="h-6 w-6 text-indigo-500" />
+              <motion.h1
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-transparent"
+              >
+                <div className="p-2 bg-gradient-to-br from-indigo-500 to-emerald-600 rounded-xl shadow-lg shadow-indigo-500/30">
+                  <Package className="h-6 w-6 text-white" />
+                </div>
                 Order Optimizer
-              </h1>
-              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="mt-1.5 text-sm text-gray-500 dark:text-slate-400"
+              >
                 EOQ calculation and order prompt generation with safety stock
-              </p>
+              </motion.p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-                <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">Service Level:</span>
+              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10">
+                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Service Level:</span>
                 <input
                   type="range"
                   min={90}
@@ -199,92 +213,91 @@ export default function OrderOptimizerPage() {
                   step={1}
                   value={serviceLevel}
                   onChange={(e) => setServiceLevel(Number(e.target.value))}
-                  className="w-20 accent-indigo-500"
+                  className="w-24 accent-indigo-500"
                 />
-                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 w-10">{serviceLevel}%</span>
+                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 w-10 tabular-nums">{serviceLevel}%</span>
               </div>
-              <button onClick={handleExport} className="flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleExport}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-emerald-600 hover:from-indigo-600 hover:to-emerald-700 px-4 py-2.5 text-sm font-medium text-white transition-all shadow-lg shadow-indigo-500/30"
+              >
                 <Download size={16} />
                 <span className="hidden sm:inline">Export</span>
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="px-4 sm:px-6 py-6 space-y-6">
+      <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-500/20">
-                <Package className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+          {[
+            {
+              label: 'Total Order Prompt',
+              value: summary.totalOrderPrompt.toLocaleString(),
+              sub: 'units',
+              icon: Package,
+              bg: 'bg-indigo-50 dark:bg-indigo-500/10',
+              iconColor: 'text-indigo-600 dark:text-indigo-400',
+              badge: { text: 'Pending', color: 'text-indigo-600 dark:text-indigo-400' },
+              delay: 0,
+            },
+            {
+              label: 'Order Prompt Value',
+              value: `$${summary.totalOrderPromptValue >= 1000000
+                ? `${(summary.totalOrderPromptValue / 1000000).toFixed(1)}M`
+                : `${(summary.totalOrderPromptValue / 1000).toFixed(1)}k`}`,
+              sub: '',
+              icon: DollarSign,
+              bg: 'bg-emerald-50 dark:bg-emerald-500/10',
+              iconColor: 'text-emerald-600 dark:text-emerald-400',
+              badge: { text: 'Total', color: 'text-emerald-600 dark:text-emerald-400' },
+              delay: 0.05,
+            },
+            {
+              label: 'Low Stock Items',
+              value: `${summary.lowStockItems}`,
+              sub: summary.lowStockItems > 0 ? 'need action' : 'all good',
+              icon: AlertCircle,
+              bg: summary.lowStockItems > 0 ? 'bg-red-50 dark:bg-red-500/10' : 'bg-emerald-50 dark:bg-emerald-500/10',
+              iconColor: summary.lowStockItems > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+              badge: { text: summary.lowStockItems > 0 ? 'Alert' : 'OK', color: summary.lowStockItems > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400' },
+              delay: 0.1,
+            },
+            {
+              label: 'EOQ Optimized',
+              value: `${summary.optimalItems}`,
+              sub: 'optimal coverage',
+              icon: Calculator,
+              bg: 'bg-amber-50 dark:bg-amber-500/10',
+              iconColor: 'text-amber-600 dark:text-amber-400',
+              badge: { text: 'Balanced', color: 'text-amber-600 dark:text-amber-400' },
+              delay: 0.15,
+            },
+          ].map((kpi) => (
+            <motion.div
+              key={kpi.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: kpi.delay }}
+              whileHover={{ y: -2, scale: 1.01 }}
+              className="rounded-2xl border border-gray-200/50 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 p-4 shadow-sm hover:shadow-md transition-all"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${kpi.bg}`}>
+                  <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
+                </div>
+                <span className={`text-xs font-medium ${kpi.badge.color}`}>{kpi.badge.text}</span>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Total Order Prompt</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">
-                  {summary.totalOrderPrompt.toLocaleString()} <span className="text-sm font-normal">units</span>
-                </p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-500/20">
-                <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Order Prompt Value</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">
-                  ${(summary.totalOrderPromptValue / 1000).toFixed(1)}k
-                </p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 dark:bg-red-500/20">
-                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Low Stock Items</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{summary.lowStockItems}</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-500/20">
-                <Calculator className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">EOQ Optimized</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{summary.optimalItems}</p>
-              </div>
-            </div>
-          </motion.div>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mb-1">{kpi.label}</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">
+                {kpi.value} {kpi.sub && <span className="text-xs font-normal text-gray-400">{kpi.sub}</span>}
+              </p>
+            </motion.div>
+          ))}
         </div>
 
         {/* Formula Explanation */}

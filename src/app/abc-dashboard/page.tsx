@@ -516,36 +516,58 @@ export default function ABCDashboardPage() {
   }, [filteredData, summary]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-amber-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-slate-800">
-        <div className="px-4 sm:px-6 py-4">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-slate-800/50"
+      >
+        <div className="px-4 sm:px-6 py-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="flex items-center gap-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                <Layers className="h-6 w-6 text-indigo-500" />
+              <motion.h1
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 text-2xl sm:text-3xl font-bold bg-gradient-to-r from-emerald-600 to-amber-600 bg-clip-text text-transparent"
+              >
+                <div className="p-2 bg-gradient-to-br from-emerald-500 to-amber-600 rounded-xl shadow-lg shadow-emerald-500/30">
+                  <Layers className="h-6 w-6 text-white" />
+                </div>
                 ABC Analysis Dashboard
-              </h1>
-              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="mt-1.5 text-sm text-gray-500 dark:text-slate-400"
+              >
                 SKU classification and stock coverage analysis
-              </p>
+              </motion.p>
             </div>
             <div className="flex items-center gap-2">
-              <button 
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setShowAgeConfig(true)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700"
+                className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:border-emerald-300 dark:hover:border-emerald-500/50 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all"
               >
                 <Settings size={16} />
                 <span className="hidden sm:inline">Age Config</span>
-              </button>
-              <button onClick={handleExport} className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleExport}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-600 hover:from-emerald-600 hover:to-amber-700 px-4 py-2 text-sm font-medium text-white transition-all shadow-lg shadow-emerald-500/30"
+              >
                 <Download size={16} />
                 <span className="hidden sm:inline">Export</span>
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div className="px-4 sm:px-6 py-6 space-y-6">
         {/* KPI Cards */}
