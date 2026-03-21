@@ -108,8 +108,10 @@ export default function ForecastingPage() {
     const data = MONTHS.map((month, index) => {
       let totalActual = 0;
       let totalForecast = 0;
-      
-      Object.values(historicalData).forEach(matData => {
+
+      // Use DataContext data, falling back to mock data for each material
+      Object.keys(HISTORICAL_DATA).forEach(matId => {
+        const matData = historicalData[matId] || HISTORICAL_DATA[matId] || [];
         const monthData = matData[index];
         if (monthData) {
           totalActual += monthData.actualSales || 0;
@@ -117,26 +119,25 @@ export default function ForecastingPage() {
         }
       });
       
-      // Calculate month-wise forecast accuracy (M-1 based)
-      const accuracy = totalActual > 0 
-        ? calculateForecastAccuracy(totalActual, totalForecast)
-        : 100;
-      
+      // Only include months with actual sales data (filter out future months)
+      if (totalActual === 0) return null;
+
+      const accuracy = calculateForecastAccuracy(totalActual, totalForecast);
       return {
         month,
         actual: totalActual,
         forecast: totalForecast,
         accuracy: Math.round(accuracy * 10) / 10,
       };
-    });
-    
-    return data;
+    }).filter(Boolean);
+
+    return data as { month: string; actual: number; forecast: number; accuracy: number }[];
   }, [historicalData]);
 
   // Calculate material-level forecast accuracy
   const materialAccuracyData = useMemo(() => {
     return materials.map(mat => {
-      const matData = historicalData[mat.id];
+      const matData = historicalData[mat.id] || HISTORICAL_DATA[mat.id];
       if (!matData || matData.length < 2) {
         return {
           id: mat.id,
@@ -181,10 +182,20 @@ export default function ForecastingPage() {
 
   // Demand vs Actual chart data — adjusted by forecast method
   const demandTrendData = useMemo(() => {
+    // Filter by selected material or show all — prefer useData(), fall back to mock data
+    const effectiveHistoricalData: Record<string, any[]> = Object.keys(HISTORICAL_DATA).reduce((acc, id) => {
+      acc[id] = historicalData[id] || HISTORICAL_DATA[id] || [];
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    const dataSource = selectedMaterial === 'all'
+      ? Object.values(effectiveHistoricalData)
+      : [effectiveHistoricalData[selectedMaterial] || []];
+
     const base = MONTHS.map((month, index) => {
       let totalActual = 0;
       let totalForecast = 0;
-      Object.values(historicalData).forEach(matData => {
+      dataSource.forEach(matData => {
         const monthData = matData[index];
         if (monthData) {
           totalActual += monthData.actualSales || 0;

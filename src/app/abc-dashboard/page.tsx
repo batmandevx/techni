@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -335,6 +335,19 @@ export default function ABCDashboardPage() {
   const [ageConfig, setAgeConfig] = useState<InventoryAgeConfig>(getInventoryAgeConfig());
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Sync age config when Settings page changes it
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        setInventoryAgeConfig(detail);
+        setAgeConfig(getInventoryAgeConfig());
+      }
+    };
+    window.addEventListener('inventory-age-config-changed', handler);
+    return () => window.removeEventListener('inventory-age-config-changed', handler);
+  }, []);
 
   // Prepare data for ABC analysis
   const abcData = useMemo(() => {

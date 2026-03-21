@@ -445,16 +445,13 @@ export function calculateStatisticalSafetyStock(
   leadTime: number,
   serviceLevel: number = 0.95
 ): number {
-  // Z-score for given service level (95% = 1.645, 99% = 2.326)
+  // Z-score for given service level
   const zScores: Record<number, number> = {
-    0.80: 0.84,
-    0.85: 1.04,
-    0.90: 1.28,
-    0.95: 1.645,
-    0.98: 2.05,
-    0.99: 2.33,
+    0.80: 0.84, 0.85: 1.04, 0.90: 1.28, 0.91: 1.34, 0.92: 1.41,
+    0.93: 1.48, 0.94: 1.55, 0.95: 1.645, 0.96: 1.75, 0.97: 1.88,
+    0.98: 2.05, 0.99: 2.33,
   };
-  const z = zScores[serviceLevel] || 1.645;
+  const z = zScores[Math.round(serviceLevel * 100) / 100] || 1.645;
 
   // Safety Stock = Z × √(Lead Time) × Standard Deviation of Demand
   return Math.round(z * Math.sqrt(leadTime) * demandStdDev);

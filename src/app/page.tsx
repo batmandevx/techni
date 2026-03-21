@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  LayoutDashboard, 
-  Package, 
-  TrendingUp, 
-  Upload, 
+import {
+  LayoutDashboard,
+  Package,
+  TrendingUp,
+  Upload,
   Settings,
   Sparkles,
   Bot,
@@ -66,17 +66,18 @@ import { ExportWidget } from '@/components/dashboard/ExportWidget';
 import { MobileNav } from '@/components/dashboard/MobileNav';
 import { RecentSearches } from '@/components/dashboard/RecentSearches';
 import { WelcomeModal } from '@/components/dashboard/WelcomeModal';
+import { SearchBar } from '@/components/SearchBar';
 
 // Animated counter component
 function AnimatedCounter({ value, suffix = '', prefix = '' }: { value: number; suffix?: string; prefix?: string }) {
   const [displayValue, setDisplayValue] = useState(0);
-  
+
   useEffect(() => {
     const duration = 1500;
     const steps = 60;
     const increment = value / steps;
     let current = 0;
-    
+
     const timer = setInterval(() => {
       current += increment;
       if (current >= value) {
@@ -86,10 +87,10 @@ function AnimatedCounter({ value, suffix = '', prefix = '' }: { value: number; s
         setDisplayValue(Math.floor(current));
       }
     }, duration / steps);
-    
+
     return () => clearInterval(timer);
   }, [value]);
-  
+
   return (
     <span>
       {prefix}{displayValue.toLocaleString()}{suffix}
@@ -102,13 +103,13 @@ function Sparkline({ data, color = "#6366f1", height = 40 }: { data: number[]; c
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
-  
+
   const points = data.map((value, i) => {
     const x = (i / (data.length - 1)) * 100;
     const y = height - ((value - min) / range) * height;
     return `${x},${y}`;
   }).join(' ');
-  
+
   return (
     <svg viewBox={`0 0 100 ${height}`} className="w-full" preserveAspectRatio="none">
       <defs>
@@ -140,22 +141,22 @@ function Sparkline({ data, color = "#6366f1", height = 40 }: { data: number[]; c
 }
 
 // KPI Card with sparkline
-function KPICardEnhanced({ 
-  title, 
-  value, 
-  change, 
+function KPICardEnhanced({
+  title,
+  value,
+  change,
   changeType = 'positive',
-  icon: Icon, 
+  icon: Icon,
   color,
   sparklineData,
   subtitle,
   onClick
-}: { 
-  title: string; 
-  value: React.ReactNode; 
+}: {
+  title: string;
+  value: React.ReactNode;
   change?: string;
   changeType?: 'positive' | 'negative' | 'neutral';
-  icon: any; 
+  icon: any;
   color: string;
   sparklineData?: number[];
   subtitle?: string;
@@ -183,28 +184,27 @@ function KPICardEnhanced({
     >
       {/* Background gradient on hover */}
       <div className={`absolute inset-0 bg-gradient-to-br ${colors.bg} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-      
+
       <div className="relative">
         <div className="flex items-start justify-between mb-4">
           <div className={`p-3 rounded-xl ${colors.bg} ${colors.text}`}>
             <Icon className="w-6 h-6" />
           </div>
           {change && (
-            <div className={`flex items-center gap-1 text-sm font-medium ${
-              changeType === 'positive' ? 'text-emerald-600' : 
+            <div className={`flex items-center gap-1 text-sm font-medium ${changeType === 'positive' ? 'text-emerald-600' :
               changeType === 'negative' ? 'text-rose-600' : 'text-gray-500'
-            }`}>
-              {changeType === 'positive' ? <ArrowUpRight className="w-4 h-4" /> : 
-               changeType === 'negative' ? <ArrowDownRight className="w-4 h-4" /> : null}
+              }`}>
+              {changeType === 'positive' ? <ArrowUpRight className="w-4 h-4" /> :
+                changeType === 'negative' ? <ArrowDownRight className="w-4 h-4" /> : null}
               {change}
             </div>
           )}
         </div>
-        
+
         <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{value}</h3>
         <p className="text-sm text-gray-500 dark:text-slate-400">{title}</p>
         {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
-        
+
         {sparklineData && (
           <div className="mt-4 h-10">
             <Sparkline data={sparklineData} color={color === 'indigo' ? '#6366f1' : color === 'emerald' ? '#10b981' : '#f59e0b'} />
@@ -216,15 +216,15 @@ function KPICardEnhanced({
 }
 
 // Activity item component
-function ActivityItem({ icon: Icon, title, description, time, color }: { 
-  icon: any; 
-  title: string; 
-  description: string; 
+function ActivityItem({ icon: Icon, title, description, time, color }: {
+  icon: any;
+  title: string;
+  description: string;
   time: string;
   color: string;
 }) {
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -244,7 +244,7 @@ function ActivityItem({ icon: Icon, title, description, time, color }: {
 // Progress bar component
 function ProgressBar({ value, max, color = "indigo", label }: { value: number; max: number; color?: string; label: string }) {
   const percentage = Math.min((value / max) * 100, 100);
-  
+
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-sm">
@@ -256,13 +256,12 @@ function ProgressBar({ value, max, color = "indigo", label }: { value: number; m
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 1, delay: 0.5 }}
-          className={`h-full rounded-full ${
-            color === 'emerald' ? 'bg-emerald-500' :
+          className={`h-full rounded-full ${color === 'emerald' ? 'bg-emerald-500' :
             color === 'indigo' ? 'bg-indigo-500' :
-            color === 'amber' ? 'bg-amber-500' :
-            color === 'rose' ? 'bg-rose-500' :
-            'bg-blue-500'
-          }`}
+              color === 'amber' ? 'bg-amber-500' :
+                color === 'rose' ? 'bg-rose-500' :
+                  'bg-blue-500'
+            }`}
         />
       </div>
     </div>
@@ -287,19 +286,19 @@ function MiniCalendar() {
           {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </h3>
         <div className="flex gap-1">
-          <button 
+          <button
             onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
             className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700"
           >
             <ChevronRight className="w-4 h-4 rotate-180" />
           </button>
-          <button 
+          <button
             onClick={() => setCurrentDate(new Date())}
             className="text-xs px-2 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-medium"
           >
             Today
           </button>
-          <button 
+          <button
             onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
             className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700"
           >
@@ -319,11 +318,10 @@ function MiniCalendar() {
             key={day}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
-            className={`aspect-square rounded-lg flex items-center justify-center text-sm ${
-              isCurrentMonth && day === today
-                ? 'bg-indigo-500 text-white font-semibold'
-                : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300'
-            }`}
+            className={`aspect-square rounded-lg flex items-center justify-center text-sm ${isCurrentMonth && day === today
+              ? 'bg-indigo-500 text-white font-semibold'
+              : 'hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300'
+              }`}
           >
             {day}
           </motion.button>
@@ -455,14 +453,13 @@ function SKUDetailsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
                       </Badge>
                     </td>
                     <td className="p-3 text-right text-sm">{item.currentStock.toLocaleString()}</td>
-                    <td className="p-3 text-right text-sm">${(item.currentStock * item.avgMonthlySalesValue / (item.avgMonthlySales || 1)).toFixed(0)}</td>
+                    <td className="p-3 text-right text-sm">${(item.stockValue ?? 0).toLocaleString()}</td>
                     <td className="p-3">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        item.stockCoverageMonths < 1 ? 'bg-red-100 text-red-700' :
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${item.stockCoverageMonths < 1 ? 'bg-red-100 text-red-700' :
                         item.stockCoverageMonths < 2 ? 'bg-amber-100 text-amber-700' :
-                        'bg-emerald-100 text-emerald-700'
-                      }`}>
-                        {item.stockCoverageMonths < 1 ? 'Critical' : item.stockCoverageMonths < 2 ? 'Low' : 'Good'}
+                          'bg-emerald-100 text-emerald-700'
+                        }`}>
+                        {item.stockCoverageMonths < 1 ? 'Action for Provision' : item.stockCoverageMonths < 2 ? 'Action for Sales' : 'Healthy'}
                       </span>
                     </td>
                   </tr>
@@ -481,6 +478,7 @@ export default function Dashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSKUModal, setShowSKUModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { orders, customers, kpis } = useData();
 
   useEffect(() => {
@@ -507,7 +505,7 @@ export default function Dashboard() {
       const historicalSales = history.map((h: any) => h.actualSales).filter((s: number) => s > 0);
       const latest = history[history.length - 1];
       const currentStock = latest ? latest.openingStock + latest.stockInTransit - latest.actualSales : 0;
-      
+
       return {
         id: mat.id,
         description: mat.description,
@@ -517,20 +515,36 @@ export default function Dashboard() {
         currentStock,
       };
     });
-    
+
     const abcData = performABCAnalysis(materialsWithHistory);
     const lowStockCount = abcData.filter(d => d.stockCoverageMonths < 1).length;
-    const totalStockValue = abcData.reduce((sum, d) => sum + (d.currentStock * d.avgMonthlySalesValue / (d.avgMonthlySales || 1)), 0);
-    
+    const totalStockValue = abcData.reduce((sum, d) => sum + (d.stockValue ?? 0), 0);
+
+    // Calculate real forecast accuracy from HISTORICAL_DATA
+    let totalAccuracy = 0;
+    let accuracyCount = 0;
+    Object.values(HISTORICAL_DATA).forEach(matData => {
+      const completed = matData.filter(d => d.actualSales > 0);
+      if (completed.length > 0) {
+        const last = completed[completed.length - 1];
+        const acc = last.actualSales > 0
+          ? Math.max(0, Math.min(100, (1 - Math.abs(last.actualSales - last.forecast) / last.actualSales) * 100))
+          : 100;
+        totalAccuracy += acc;
+        accuracyCount++;
+      }
+    });
+    const avgForecastAccuracy = accuracyCount > 0 ? Math.round(totalAccuracy / accuracyCount * 10) / 10 : 94.2;
+
     return {
       totalSKUs: MATERIALS.length,
       lowStockItems: lowStockCount,
       totalStockValue,
-      avgForecastAccuracy: 94.2,
-      totalOrders: orders.length || 156,
-      activeCustomers: 48,
+      avgForecastAccuracy,
+      totalOrders: orders.length || MATERIALS.length * 4,
+      activeCustomers: customers.length || 7,
     };
-  }, [orders.length]);
+  }, [orders.length, customers.length]);
 
   const modules = [
     {
@@ -608,8 +622,8 @@ export default function Dashboard() {
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
+    visible: {
+      opacity: 1,
       y: 0,
       transition: { duration: 0.5, ease: [0.175, 0.885, 0.32, 1.275] },
     },
@@ -625,7 +639,7 @@ export default function Dashboard() {
       <SKUDetailsModal isOpen={showSKUModal} onClose={() => setShowSKUModal(false)} />
 
       {/* Header */}
-      <motion.header 
+      <motion.header
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-slate-800/50"
@@ -637,7 +651,7 @@ export default function Dashboard() {
                 <LayoutDashboard className="w-6 h-6 text-white" />
               </div>
               <div>
-                <motion.h1 
+                <motion.h1
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="text-2xl font-bold text-gray-900 dark:text-white"
@@ -662,7 +676,7 @@ export default function Dashboard() {
                   {currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                 </span>
               </div>
-              <button 
+              <button
                 onClick={() => setShowShortcuts(true)}
                 className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
                 title="Keyboard Shortcuts (Ctrl+?)"
@@ -695,7 +709,7 @@ export default function Dashboard() {
               </div>
               <h2 className="text-3xl font-bold mb-2">Optimize Your Supply Chain</h2>
               <p className="text-indigo-100 max-w-xl">
-                Your inventory forecast accuracy has improved by 12% this month. 
+                Your inventory forecast accuracy has improved by 12% this month.
                 Review the ABC Analysis to see which SKUs need attention.
               </p>
             </div>
@@ -712,8 +726,91 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
+        {/* Enhanced Search Bar */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="relative"
+        >
+          <div className="max-w-2xl mx-auto">
+            <SearchBar
+              placeholder="Search SKUs, orders, customers, or ask AI..."
+              onSearch={(query) => setSearchQuery(query)}
+              size="lg"
+              showFilters={true}
+              className="shadow-lg"
+            />
+          </div>
+
+          {/* Search Results Dropdown */}
+          {searchQuery && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="absolute top-full left-0 right-0 mt-2 max-w-2xl mx-auto rounded-2xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-2xl overflow-hidden z-50"
+            >
+              <div className="p-3 border-b border-gray-100 dark:border-slate-700">
+                <p className="text-sm text-gray-500 dark:text-slate-400">
+                  Search results for "{searchQuery}"
+                </p>
+              </div>
+              <div className="max-h-80 overflow-auto">
+                {MATERIALS.filter(m =>
+                  m.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  m.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (m.category && m.category.toLowerCase().includes(searchQuery.toLowerCase()))
+                ).length > 0 ? (
+                  MATERIALS.filter(m =>
+                    m.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    m.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (m.category && m.category.toLowerCase().includes(searchQuery.toLowerCase()))
+                  ).slice(0, 8).map((item, idx) => (
+                    <Link
+                      key={item.id}
+                      href="/abc-dashboard"
+                      className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors border-b border-gray-100 dark:border-slate-700 last:border-0"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-xl bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center">
+                          <Package className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">{item.description}</p>
+                          <p className="text-sm text-gray-500">{item.id} • {item.category}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                          ${item.priceUSD}
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="p-8 text-center">
+                    <Search className="h-12 w-12 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+                    <p className="text-gray-500 dark:text-slate-400">No results found</p>
+                    <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Try searching for a different term</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-3 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+                <Link
+                  href={`/abc-dashboard?search=${encodeURIComponent(searchQuery)}`}
+                  className="flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  View all results
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </motion.div>
+          )}
+        </motion.div>
+
         {/* Enhanced KPI Cards */}
-        <motion.div 
+        <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -732,7 +829,7 @@ export default function Dashboard() {
               onClick={() => setShowSKUModal(true)}
             />
           </motion.div>
-          
+
           <motion.div variants={itemVariants}>
             <KPICardEnhanced
               title="Forecast Accuracy"
@@ -745,7 +842,7 @@ export default function Dashboard() {
               subtitle="Based on M-1 actuals"
             />
           </motion.div>
-          
+
           <motion.div variants={itemVariants}>
             <KPICardEnhanced
               title="Low Stock Items"
@@ -758,11 +855,13 @@ export default function Dashboard() {
               subtitle="Below 1 month coverage"
             />
           </motion.div>
-          
+
           <motion.div variants={itemVariants}>
             <KPICardEnhanced
               title="Stock Value"
-              value={`$${(stats.totalStockValue / 1000).toFixed(1)}k`}
+              value={stats.totalStockValue >= 1000000
+                ? `$${(stats.totalStockValue / 1000000).toFixed(1)}M`
+                : `$${(stats.totalStockValue / 1000).toFixed(1)}k`}
               change="+8.2%"
               changeType="neutral"
               icon={DollarSign}
@@ -774,7 +873,7 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Additional KPI Row */}
-        <motion.div 
+        <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -791,7 +890,7 @@ export default function Dashboard() {
               subtitle="This month"
             />
           </motion.div>
-          
+
           <motion.div variants={itemVariants}>
             <KPICardEnhanced
               title="Active Customers"
@@ -803,7 +902,7 @@ export default function Dashboard() {
               subtitle="Engaged this week"
             />
           </motion.div>
-          
+
           <motion.div variants={itemVariants}>
             <KPICardEnhanced
               title="System Health"
@@ -818,7 +917,7 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Charts & Analysis Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -839,7 +938,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content - Modules */}
           <div className="lg:col-span-2">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="mb-6"
@@ -855,7 +954,7 @@ export default function Dashboard() {
               </div>
             </motion.div>
 
-            <motion.div 
+            <motion.div
               variants={containerVariants}
               initial="hidden"
               animate="visible"
@@ -864,7 +963,7 @@ export default function Dashboard() {
               {modules.map((module, index) => {
                 const Icon = module.icon;
                 const isHovered = hoveredModule === module.id;
-                
+
                 const colorStyles: Record<string, string> = {
                   indigo: 'from-indigo-500 to-purple-600 shadow-indigo-500/30',
                   emerald: 'from-emerald-500 to-teal-600 shadow-emerald-500/30',
@@ -892,7 +991,7 @@ export default function Dashboard() {
                         <div className="relative">
                           {/* Header */}
                           <div className="flex items-start justify-between mb-4">
-                            <motion.div 
+                            <motion.div
                               animate={{ rotate: isHovered ? 5 : 0, scale: isHovered ? 1.1 : 1 }}
                               className={`p-3 rounded-xl bg-gradient-to-br ${colorStyles[module.color]} text-white shadow-lg`}
                             >
@@ -930,7 +1029,7 @@ export default function Dashboard() {
                           {/* Features */}
                           <div className="flex flex-wrap gap-2">
                             {module.features.map((feature) => (
-                              <span 
+                              <span
                                 key={feature}
                                 className="text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300"
                               >

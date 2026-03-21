@@ -404,6 +404,27 @@ export default function UploadPage() {
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedRows = previewData?.rows.slice(startIndex, startIndex + pageSize) || [];
 
+  const downloadTemplate = async (type: 'orders' | 'customers') => {
+    const wb = XLSX.utils.book_new();
+    if (type === 'orders') {
+      const headers = ['Order_ID', 'Order_Date', 'Customer_ID', 'Material_ID', 'Quantity', 'Status'];
+      const sample = [
+        ['ORD-001', '2026-01-15', 'CUST-001', 'MAT-001', 500, 'CONFIRMED'],
+        ['ORD-002', '2026-02-01', 'CUST-002', 'MAT-002', 300, 'SHIPPED'],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...sample]), 'Orders_Template');
+    } else {
+      const headers = ['Customer_ID', 'Customer_Name', 'Sales_Org', 'Dist_Channel', 'Division', 'Payment_Terms', 'Ship_To_City', 'Country'];
+      const sample = [
+        ['CUST-001', 'Acme Corp', 'SG01', '10', 'Beverages', 'NET30', 'Singapore', 'Singapore'],
+        ['CUST-002', 'Beta Ltd', 'AU01', '10', 'Snacks', 'NET60', 'Sydney', 'Australia'],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...sample]), 'Customers_Template');
+    }
+    XLSX.writeFile(wb, `Tenchi_${type}_template.xlsx`);
+    toast.success(`${type === 'orders' ? 'Orders' : 'Customers'} template downloaded!`);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
       {/* Header */}
@@ -562,6 +583,38 @@ export default function UploadPage() {
                     </div>
                   )}
                 </div>
+              </motion.div>
+
+              {/* Template Downloads */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="bg-white dark:bg-slate-800/80 rounded-2xl p-5 border border-gray-200 dark:border-slate-700"
+              >
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                  <Download className="h-4 w-4 text-indigo-500" />
+                  Download Templates
+                </h4>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => downloadTemplate('orders')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-sm hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Orders Template (.xlsx)
+                  </button>
+                  <button
+                    onClick={() => downloadTemplate('customers')}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-sm hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
+                  >
+                    <Users className="h-4 w-4" />
+                    Customers Template (.xlsx)
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-slate-500 mt-2">
+                  Download and fill in the template, then upload your completed file above.
+                </p>
               </motion.div>
             </motion.div>
           )}

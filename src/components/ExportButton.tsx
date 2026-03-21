@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, FileSpreadsheet, FileText, FileJson, X } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, FileJson } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ExportButtonProps {
   data: any[];
@@ -49,65 +50,53 @@ export function ExportButton({ data, filename = 'export', onExport }: ExportButt
   };
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="btn-modern btn-secondary-modern"
-        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
       >
         <Download size={18} />
-        Export
+        <span className="hidden sm:inline">Export</span>
       </button>
 
-      {isOpen && (
-        <>
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 999,
-            }}
-            onClick={() => setIsOpen(false)}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 8px)',
-              right: 0,
-              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98))',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: '16px',
-              padding: '8px',
-              minWidth: '200px',
-              zIndex: 1000,
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
-              animation: 'fadeInUp 0.2s ease-out',
-            }}
-          >
-            <ExportOption
-              icon={FileSpreadsheet}
-              label="Excel (.xlsx)"
-              desc="Best for analysis"
-              color="#10b981"
-              onClick={exportToExcel}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setIsOpen(false)}
             />
-            <ExportOption
-              icon={FileText}
-              label="CSV (.csv)"
-              desc="Universal format"
-              color="#6366f1"
-              onClick={exportToCSV}
-            />
-            <ExportOption
-              icon={FileJson}
-              label="JSON (.json)"
-              desc="For developers"
-              color="#f59e0b"
-              onClick={exportToJSON}
-            />
-          </div>
-        </>
-      )}
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute top-full right-0 mt-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl p-2 min-w-[220px] z-50 shadow-xl"
+            >
+              <ExportOption
+                icon={FileSpreadsheet}
+                label="Excel (.xlsx)"
+                desc="Best for analysis"
+                color="#10b981"
+                onClick={exportToExcel}
+              />
+              <ExportOption
+                icon={FileText}
+                label="CSV (.csv)"
+                desc="Universal format"
+                color="#6366f1"
+                onClick={exportToCSV}
+              />
+              <ExportOption
+                icon={FileJson}
+                label="JSON (.json)"
+                desc="For developers"
+                color="#f59e0b"
+                onClick={exportToJSON}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -128,42 +117,17 @@ function ExportOption({
   return (
     <button
       onClick={onClick}
-      style={{
-        width: '100%',
-        padding: '12px 16px',
-        background: 'transparent',
-        border: 'none',
-        borderRadius: '12px',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        transition: 'all 0.2s',
-        textAlign: 'left',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-      }}
+      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors text-left"
     >
       <div
-        style={{
-          width: '40px',
-          height: '40px',
-          borderRadius: '10px',
-          background: `${color}20`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+        className="w-10 h-10 rounded-xl flex items-center justify-center"
+        style={{ backgroundColor: `${color}20` }}
       >
         <Icon size={20} style={{ color }} />
       </div>
       <div>
-        <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.9rem' }}>{label}</div>
-        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{desc}</div>
+        <div className="font-semibold text-gray-900 dark:text-white text-sm">{label}</div>
+        <div className="text-xs text-gray-500 dark:text-slate-400">{desc}</div>
       </div>
     </button>
   );

@@ -221,11 +221,11 @@ function SKUDetailsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
                       </td>
                       <td className="px-4 py-3 text-center">
                         {item.stockCoverageMonths < 1 ? (
-                          <span className="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs">Bad</span>
+                          <span className="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium">Action for Provision</span>
                         ) : item.stockCoverageMonths < 2 ? (
-                          <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs">Slow</span>
+                          <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">Action for Sales</span>
                         ) : (
-                          <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs">Good</span>
+                          <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">Healthy</span>
                         )}
                       </td>
                     </tr>
