@@ -1,19 +1,19 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { 
-  Package, 
-  Search, 
-  Filter, 
-  Clock, 
-  CheckCircle, 
-  Truck, 
+import {
+  Package,
+  Search,
+  Filter,
+  CheckCircle,
+  Truck,
   FileText,
-  ChevronDown,
   Download,
   RefreshCw,
-  ArrowUpRight,
-  Calendar
+  Calendar,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
 } from 'lucide-react';
 
 interface Order {
@@ -39,15 +39,33 @@ import { OrderModal } from '@/components/OrderModal';
 import { ExportButton } from '@/components/ExportButton';
 import { useToast } from '@/components/Toast';
 
-const statusConfig: Record<string, { color: string; bg: string; icon: React.ElementType }> = {
-  CREATED: { color: '#6b7280', bg: '#f3f4f6', icon: FileText },
-  CONFIRMED: { color: '#3b82f6', bg: '#dbeafe', icon: CheckCircle },
-  SCHEDULED: { color: '#f59e0b', bg: '#fef3c7', icon: Calendar },
-  SHIPPED: { color: '#06b6d4', bg: '#cffafe', icon: Truck },
-  DELIVERED: { color: '#10b981', bg: '#d1fae5', icon: CheckCircle },
-  INVOICED: { color: '#8b5cf6', bg: '#ede9fe', icon: FileText },
-  CONFIRMED_EXCEL: { color: '#10b981', bg: '#d1fae5', icon: CheckCircle },
+type SortKey = 'orderId' | 'orderDate' | 'quantity' | 'value' | 'status' | null;
+type SortDir = 'asc' | 'desc';
+
+const PAGE_SIZE = 25;
+
+// Uses HSL-based colours that work on both light and dark glassy backgrounds.
+const statusConfig: Record<string, { hue: number; icon: React.ElementType }> = {
+  CREATED:         { hue: 220, icon: FileText },
+  CONFIRMED:       { hue: 217, icon: CheckCircle },
+  SCHEDULED:       { hue:  38, icon: Calendar },
+  SHIPPED:         { hue: 189, icon: Truck },
+  DELIVERED:       { hue: 160, icon: CheckCircle },
+  INVOICED:        { hue: 262, icon: FileText },
+  CONFIRMED_EXCEL: { hue: 160, icon: CheckCircle },
 };
+
+function statusStyle(hue: number, active = false) {
+  return {
+    backgroundColor: `hsla(${hue}, 70%, 60%, ${active ? 0.9 : 0.18})`,
+    color: active ? '#fff' : `hsl(${hue}, 80%, 75%)`,
+    border: `1px solid hsla(${hue}, 70%, 60%, 0.45)`,
+  };
+}
+
+function statusDot(hue: number) {
+  return { backgroundColor: `hsl(${hue}, 70%, 60%)` };
+}
 
 export default function OrdersPage() {
   const { orders: rawOrders, customers, materials } = useData();
@@ -56,22 +74,22 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
   const { showToast } = useToast();
 
-  // Map contextual orders to the new interface
   const orders = useMemo(() => {
     return rawOrders.map((o: any) => {
-      const customer = customers.find(c => c.id === o.customerId) || { name: 'Unknown', country: 'Unknown' };
-      const material = materials.find(m => m.id === o.materialId) || { description: 'Unknown', priceUSD: 0 };
+      const customer = customers.find((c: any) => c.id === o.customerId) || { name: 'Unknown', country: 'Unknown' };
+      const material = materials.find((m: any) => m.id === o.materialId) || { description: 'Unknown', priceUSD: 0 };
       return {
         id: o.orderId || Math.random().toString(),
         orderId: o.orderId || o.id,
         orderDate: o.orderDate || new Date().toISOString(),
         status: (o.status || 'CONFIRMED').toUpperCase(),
         customer,
-        orderLines: [
-          { quantity: o.quantity || 0, material }
-        ]
+        orderLines: [{ quantity: o.quantity || 0, material }],
       };
     });
   }, [rawOrders, customers, materials]);
@@ -82,56 +100,90 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    // Listen for dashboard refresh event
     window.addEventListener('dashboard-refresh', refreshOrders);
     return () => window.removeEventListener('dashboard-refresh', refreshOrders);
   }, []);
 
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.orderLines?.some(l => l.material?.description?.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStatus = statusFilter === 'ALL' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Reset to page 1 whenever filter / search / sort changes
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, sortKey, sortDir]);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const filteredOrders = useMemo(() => {
+    let result = orders.filter(order => {
+      const matchesSearch =
+        order.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.orderLines?.some((l: any) =>
+          l.material?.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      const matchesStatus = statusFilter === 'ALL' || order.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+
+    if (sortKey) {
+      result = [...result].sort((a, b) => {
+        let av: any, bv: any;
+        if (sortKey === 'orderId')    { av = a.orderId;   bv = b.orderId; }
+        if (sortKey === 'orderDate')  { av = new Date(a.orderDate).getTime(); bv = new Date(b.orderDate).getTime(); }
+        if (sortKey === 'quantity')   { av = a.orderLines.reduce((s: number, l: any) => s + l.quantity, 0); bv = b.orderLines.reduce((s: number, l: any) => s + l.quantity, 0); }
+        if (sortKey === 'value')      { av = a.orderLines.reduce((s: number, l: any) => s + l.quantity * l.material.priceUSD, 0); bv = b.orderLines.reduce((s: number, l: any) => s + l.quantity * l.material.priceUSD, 0); }
+        if (sortKey === 'status')     { av = a.status;    bv = b.status; }
+        if (av === undefined) return 0;
+        return sortDir === 'asc' ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+      });
+    }
+    return result;
+  }, [orders, searchTerm, statusFilter, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const pagedOrders = filteredOrders.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const statuses = ['ALL', ...Array.from(new Set(orders.map(o => o.status)))];
 
-  const getStatusBadge = (status: string) => {
-    const config = statusConfig[status] || statusConfig.CREATED;
-    const Icon = config.icon;
-    return (
-      <span 
-        className="badge" 
-        style={{ 
-          backgroundColor: config.bg, 
-          color: config.color,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          textTransform: 'capitalize'
-        }}
-      >
-        <Icon size={12} />
-        {status.toLowerCase()}
-      </span>
-    );
-  };
+  const exportRows = filteredOrders.map(o => ({
+    'Order ID': o.orderId,
+    'Customer': o.customer?.name,
+    'Country': o.customer?.country,
+    'Status': o.status,
+    'Quantity': o.orderLines?.reduce((sum: number, l: any) => sum + l.quantity, 0),
+    'Total Value': o.orderLines?.reduce((sum: number, l: any) => sum + l.quantity * l.material?.priceUSD, 0),
+    'Order Date': new Date(o.orderDate).toLocaleDateString(),
+  }));
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (sortKey !== col) return <ChevronsUpDown size={14} className="ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ChevronUp size={14} className="ml-1 text-indigo-400" />
+      : <ChevronDown size={14} className="ml-1 text-indigo-400" />;
+  }
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <RefreshCw size={40} style={{ animation: 'spin 1s linear infinite', color: '#3b82f6' }} />
+      <div className="flex items-center justify-center" style={{ height: '60vh' }}>
+        <RefreshCw size={40} className="animate-spin text-blue-500" />
       </div>
     );
   }
 
   return (
     <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+      {/* Page Header */}
       <div className="section-header">
         <div>
-          <h1 style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '0.5rem', background: 'linear-gradient(90deg, #f8fafc, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          <h1
+            className="gradient-heading"
+            style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '0.5rem',
+              background: 'linear-gradient(90deg, #f8fafc, #a5b4fc)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+          >
             Order Management
           </h1>
           <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>
@@ -139,108 +191,68 @@ export default function OrdersPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-          <button 
-            onClick={refreshOrders}
-            className="btn-modern btn-secondary-modern hover-lift"
-          >
+          <button onClick={refreshOrders} className="btn-modern btn-secondary-modern hover-lift">
             <RefreshCw size={18} />
             Refresh
           </button>
-          <button className="btn-modern btn-primary-modern hover-lift">
-            <Download size={18} />
-            Export Data
-          </button>
+          {/* Wired Export button */}
+          <ExportButton
+            data={exportRows}
+            filename="orders"
+            onExport={() => showToast('Orders exported successfully!', 'success')}
+          />
         </div>
       </div>
 
-      {/* Stats Row */}
+      {/* Status KPI Cards */}
       <div className="grid-kpi" style={{ marginBottom: '2rem' }}>
-        {statuses.filter(s => s !== 'ALL').map((status, index) => {
+        {statuses.filter(s => s !== 'ALL').map((status) => {
           const count = orders.filter(o => o.status === status).length;
-          const config = statusConfig[status] || statusConfig.CREATED;
+          const cfg = statusConfig[status] || statusConfig.CREATED;
           const isActive = statusFilter === status;
-          const Icon = config.icon;
-          
+          const Icon = cfg.icon;
           return (
             <button
               key={status}
               onClick={() => setStatusFilter(isActive ? 'ALL' : status)}
               className="card-modern hover-lift"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '1.5rem',
-                border: isActive ? `1px solid ${config.color}` : undefined,
-                boxShadow: isActive ? `0 0 20px ${config.color}30` : undefined,
-                cursor: 'pointer',
-                textAlign: 'left',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '1.5rem', cursor: 'pointer', textAlign: 'left',
+                border: isActive ? `1px solid hsl(${cfg.hue},70%,60%)` : undefined,
+                boxShadow: isActive ? `0 0 20px hsla(${cfg.hue},70%,60%,0.25)` : undefined,
               }}
             >
               <div>
-                <span 
-                  className="badge-modern" 
-                  style={{ 
-                    backgroundColor: isActive ? config.color : `${config.color}20`, 
-                    color: isActive ? 'white' : config.color,
-                    border: `1px solid ${config.color}40`,
-                    marginBottom: '0.5rem',
-                    display: 'inline-block'
-                  }}
+                <span
+                  className="badge-modern"
+                  style={{ ...statusStyle(cfg.hue, isActive), marginBottom: '0.5rem', display: 'inline-block' }}
                 >
                   {status.toLowerCase()}
                 </span>
-                <div style={{ fontSize: '2rem', fontWeight: 800, color: '#f8fafc' }}>
-                  {count}
-                </div>
+                <div className="text-slate-100" style={{ fontSize: '2rem', fontWeight: 800 }}>{count}</div>
               </div>
               <div style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '12px',
-                background: `linear-gradient(135deg, ${config.color}40, ${config.color}10)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: 48, height: 48, borderRadius: 12,
+                background: `linear-gradient(135deg, hsla(${cfg.hue},70%,60%,0.35), hsla(${cfg.hue},70%,60%,0.1))`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <Icon size={24} style={{ color: config.color }} />
+                <Icon size={24} style={{ color: `hsl(${cfg.hue},70%,70%)` }} />
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Search & Filter */}
-      <div className="card-modern" style={{ 
-        display: 'flex', 
-        gap: '1rem',
-        marginBottom: '2rem',
-        padding: '1rem 1.5rem',
-        alignItems: 'center',
-        flexWrap: 'wrap'
-      }}>
-        {/* Export Button */}
-        <ExportButton 
-          data={filteredOrders.map(o => ({
-            'Order ID': o.orderId,
-            'Customer': o.customer?.name,
-            'Country': o.customer?.country,
-            'Status': o.status,
-            'Quantity': o.orderLines?.reduce((sum, l) => sum + l.quantity, 0),
-            'Total Value': o.orderLines?.reduce((sum, l) => sum + (l.quantity * l.material?.priceUSD), 0),
-            'Order Date': new Date(o.orderDate).toLocaleDateString(),
-          }))}
-          filename="orders"
-          onExport={() => showToast('Orders exported successfully!', 'success')}
-        />
+      {/* Search & Filter bar */}
+      <div
+        className="card-modern"
+        style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', padding: '1rem 1.5rem',
+          alignItems: 'center', flexWrap: 'wrap' }}
+      >
         <div style={{ position: 'relative', flex: '1 1 300px' }}>
-          <Search size={20} style={{ 
-            position: 'absolute', 
-            left: '1rem', 
-            top: '50%', 
-            transform: 'translateY(-50%)',
-            color: '#94a3b8'
-          }} />
+          <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%',
+            transform: 'translateY(-50%)', color: '#94a3b8' }} />
           <input
             type="text"
             value={searchTerm}
@@ -255,26 +267,15 @@ export default function OrdersPage() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="input-modern"
-            style={{ 
-              appearance: 'none', 
-              paddingRight: '3rem', 
-              minWidth: '200px',
-              cursor: 'pointer'
-            }}
+            style={{ appearance: 'none', paddingRight: '3rem', minWidth: 200, cursor: 'pointer' }}
           >
             <option value="ALL">All Status</option>
             {statuses.filter(s => s !== 'ALL').map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
-          <Filter size={18} style={{ 
-            position: 'absolute', 
-            right: '1rem', 
-            top: '50%', 
-            transform: 'translateY(-50%)',
-            color: '#94a3b8',
-            pointerEvents: 'none'
-          }} />
+          <Filter size={18} style={{ position: 'absolute', right: '1rem', top: '50%',
+            transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
         </div>
       </div>
 
@@ -283,84 +284,83 @@ export default function OrdersPage() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: 'rgba(15, 23, 42, 0.6)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'left', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Order ID</th>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'left', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customer</th>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'left', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Product</th>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'right', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Quantity</th>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'right', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Value</th>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'left', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date</th>
-                <th style={{ padding: '1rem 1.5rem', textAlign: 'left', color: '#94a3b8', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+              <tr className="text-slate-400 text-xs uppercase tracking-wider"
+                style={{ background: 'rgba(15,23,42,0.6)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                {/* Sortable columns */}
+                {([
+                  { key: 'orderId',   label: 'Order ID',  align: 'left' },
+                  { key: null,        label: 'Customer',  align: 'left' },
+                  { key: null,        label: 'Product',   align: 'left' },
+                  { key: 'quantity',  label: 'Quantity',  align: 'right' },
+                  { key: 'value',     label: 'Value',     align: 'right' },
+                  { key: 'orderDate', label: 'Date',      align: 'left' },
+                  { key: 'status',    label: 'Status',    align: 'left' },
+                ] as { key: SortKey; label: string; align: string }[]).map(col => (
+                  <th
+                    key={col.label}
+                    onClick={() => col.key && toggleSort(col.key)}
+                    style={{
+                      padding: '1rem 1.5rem',
+                      textAlign: col.align as any,
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      cursor: col.key ? 'pointer' : 'default',
+                      userSelect: 'none',
+                    }}
+                    className={col.key ? 'hover:text-slate-200 transition-colors' : ''}
+                  >
+                    <span className="inline-flex items-center">
+                      {col.label}
+                      {col.key && <SortIcon col={col.key} />}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => {
-                const totalQty = order.orderLines?.reduce((sum, l) => sum + l.quantity, 0) || 0;
-                const totalValue = order.orderLines?.reduce((sum, l) => sum + (l.quantity * (l.material?.priceUSD || 0)), 0) || 0;
-                const config = statusConfig[order.status] || statusConfig.CREATED;
-                
+              {pagedOrders.map((order) => {
+                const totalQty   = order.orderLines?.reduce((s: number, l: any) => s + l.quantity, 0) ?? 0;
+                const totalValue = order.orderLines?.reduce((s: number, l: any) => s + l.quantity * (l.material?.priceUSD ?? 0), 0) ?? 0;
+                const cfg = statusConfig[order.status] ?? statusConfig.CREATED;
                 return (
-                  <tr 
-                    key={order.id} 
-                    onClick={() => {
-                      setSelectedOrder(order);
-                      setIsModalOpen(true);
-                    }}
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background-color 0.2s', cursor: 'pointer' }} 
-                    className="hover:bg-slate-800/50"
+                  <tr
+                    key={order.id}
+                    onClick={() => { setSelectedOrder(order); setIsModalOpen(true); }}
+                    className="hover:bg-slate-800/50 transition-colors cursor-pointer"
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                   >
-                    <td style={{ padding: '1rem 1.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: config.color }}></div>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#f8fafc', fontSize: '1rem' }}>
-                          {order.orderId}
-                        </span>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={statusDot(cfg.hue)} />
+                        <span className="font-mono font-semibold text-slate-100">{order.orderId}</span>
                       </div>
                     </td>
-                    <td style={{ padding: '1rem 1.5rem' }}>
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#e2e8f0' }}>
-                          {order.customer?.name || 'Unknown'}
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-slate-200">{order.customer?.name ?? 'Unknown'}</div>
+                      <div className="text-xs text-slate-500">{order.customer?.country}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {order.orderLines?.map((line: any, idx: number) => (
+                        <div key={idx} className="text-slate-300 font-medium">
+                          {line.material?.description ?? 'Unknown Product'}
                         </div>
-                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                          {order.customer?.country}
-                        </div>
-                      </div>
+                      ))}
                     </td>
-                    <td style={{ padding: '1rem 1.5rem' }}>
-                      <div>
-                        {order.orderLines?.map((line, idx) => (
-                          <div key={idx} style={{ fontWeight: 500, color: '#cbd5e1' }}>
-                            {line.material?.description || 'Unknown Product'}
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ padding: '1rem 1.5rem', textAlign: 'right', fontWeight: 600, color: '#f8fafc' }}>
+                    <td className="px-6 py-4 text-right font-semibold text-slate-100">
                       {totalQty.toLocaleString()}
                     </td>
-                    <td style={{ padding: '1rem 1.5rem', textAlign: 'right', fontWeight: 700, color: '#10b981' }}>
+                    <td className="px-6 py-4 text-right font-bold" style={{ color: 'hsl(160,70%,60%)' }}>
                       ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td style={{ padding: '1rem 1.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#cbd5e1', fontSize: '0.9rem' }}>
-                        <Calendar size={16} style={{ color: '#6366f1' }} />
-                        {new Date(order.orderDate).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          year: 'numeric' 
-                        })}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-slate-300 text-sm">
+                        <Calendar size={14} className="text-indigo-400" />
+                        {new Date(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                     </td>
-                    <td style={{ padding: '1rem 1.5rem' }}>
-                      <span 
-                        className="badge-modern" 
-                        style={{ 
-                          backgroundColor: `${config.color}20`, 
-                          color: config.color,
-                          border: `1px solid ${config.color}40`,
-                        }}
-                      >
+                    <td className="px-6 py-4">
+                      <span className="badge-modern" style={statusStyle(cfg.hue)}>
                         {order.status.toLowerCase()}
                       </span>
                     </td>
@@ -370,56 +370,66 @@ export default function OrdersPage() {
             </tbody>
           </table>
         </div>
-        
+
+        {/* Empty state */}
         {filteredOrders.length === 0 && (
-          <div style={{ padding: '6rem 2rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              background: 'rgba(30, 41, 59, 0.8)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '1.5rem',
-              border: '1px solid rgba(255,255,255,0.05)'
-            }}>
-              <Package size={40} style={{ color: '#64748b' }} />
+          <div className="flex flex-col items-center py-24 text-center">
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+              style={{ background: 'rgba(30,41,59,0.8)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <Package size={40} className="text-slate-500" />
             </div>
-            <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.5rem' }}>
-              No orders found
-            </h3>
-            <p style={{ color: '#94a3b8', fontSize: '1.1rem' }}>
-              {orders.length === 0 
-                ? 'Upload an Excel file to see your orders here.' 
+            <h3 className="text-2xl font-bold text-slate-100 mb-2">No orders found</h3>
+            <p className="text-slate-400 text-lg">
+              {orders.length === 0
+                ? 'Upload an Excel file to see your orders here.'
                 : 'Try adjusting your search or filter criteria.'}
             </p>
           </div>
         )}
 
-        {/* Table Footer */}
-        <div style={{ 
-          padding: '1.5rem', 
-          background: 'rgba(15, 23, 42, 0.4)',
-          borderTop: '1px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          color: '#94a3b8'
-        }}>
-          <span style={{ fontWeight: 500 }}>Showing <span style={{ color: '#f8fafc' }}>{filteredOrders.length}</span> of <span style={{ color: '#f8fafc' }}>{orders.length}</span> orders</span>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button className="btn-modern btn-secondary-modern" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Previous</button>
-            <button className="btn-modern btn-secondary-modern" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>Next</button>
+        {/* Pagination Footer */}
+        <div
+          className="flex items-center justify-between px-6 py-4 text-slate-400"
+          style={{ background: 'rgba(15,23,42,0.4)', borderTop: '1px solid rgba(255,255,255,0.05)' }}
+        >
+          <span className="font-medium">
+            Showing{' '}
+            <span className="text-slate-100">{Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredOrders.length)}</span>
+            {' '}–{' '}
+            <span className="text-slate-100">{Math.min(currentPage * PAGE_SIZE, filteredOrders.length)}</span>
+            {' '}of{' '}
+            <span className="text-slate-100">{filteredOrders.length}</span> orders
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              className="btn-modern btn-secondary-modern"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => p - 1)}
+              style={currentPage === 1 ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+            >
+              Previous
+            </button>
+            <span className="text-slate-300 text-sm">
+              Page{' '}<span className="font-semibold text-slate-100">{currentPage}</span>{' '}of{' '}
+              <span className="font-semibold text-slate-100">{totalPages}</span>
+            </span>
+            <button
+              className="btn-modern btn-secondary-modern"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => p + 1)}
+              style={currentPage === totalPages ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
 
       {/* Order Detail Modal */}
-      <OrderModal 
-        order={selectedOrder} 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <OrderModal
+        order={selectedOrder}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
       />
     </div>
   );

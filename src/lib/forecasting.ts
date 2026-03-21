@@ -48,13 +48,14 @@ export interface ABCAnalysisResult {
   avgMonthlySales: number;
   avgMonthlySalesValue: number;
   currentStock: number;
+  stockValue: number;
   stockCoverageMonths: number;
   isOutOfStock: boolean;
   riskLevel: 'high' | 'medium' | 'low';
   // Additional KPIs
   forecastAccuracy: number;
-  stockOutGapUnits: number;
-  stockOutGapValue: number;
+  stockGapUnits: number;
+  stockGapValue: number;
   // Inventory ageing
   inventoryAgeDays: number;
   inventoryAgeStatus: 'good' | 'slow' | 'bad';
@@ -151,13 +152,97 @@ export function getInventoryAgeConfig(): InventoryAgeConfig {
   return { ...currentAgeConfig };
 }
 
+// ============================================
+// Master-driven Inventory Ageing Configuration
+// ============================================
+
+export interface InventoryAgeMasterConfig {
+  goodMinMonths: number;
+  goodMaxMonths: number;
+  goodLabel: string;
+  goodColor: string;
+  slowMinMonths: number;
+  slowMaxMonths: number;
+  slowLabel: string;
+  slowColor: string;
+  badMinMonths: number;
+  badLabel: string;
+  badColor: string;
+}
+
+export const DEFAULT_INVENTORY_AGE_MASTER_CONFIG: InventoryAgeMasterConfig = {
+  goodMinMonths: 0,
+  goodMaxMonths: 6,
+  goodLabel: 'Good',
+  goodColor: '#10b981',
+  slowMinMonths: 6,
+  slowMaxMonths: 12,
+  slowLabel: 'Slow Moving',
+  slowColor: '#f59e0b',
+  badMinMonths: 12,
+  badLabel: 'Bad Inventory',
+  badColor: '#ef4444',
+};
+
+let currentAgeMasterConfig: InventoryAgeMasterConfig = { ...DEFAULT_INVENTORY_AGE_MASTER_CONFIG };
+
+// Initialize from localStorage if available
+if (typeof window !== 'undefined') {
+  try {
+    const savedConfig = localStorage.getItem('inventoryAgeConfig');
+    if (savedConfig) {
+      currentAgeMasterConfig = JSON.parse(savedConfig);
+    }
+  } catch (e) {
+    console.log('Using default inventory age config');
+  }
+}
+
+export function setInventoryAgeMasterConfig(config: InventoryAgeMasterConfig): void {
+  currentAgeMasterConfig = config;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('inventoryAgeConfig', JSON.stringify(config));
+  }
+}
+
+export function getInventoryAgeMasterConfig(): InventoryAgeMasterConfig {
+  return { ...currentAgeMasterConfig };
+}
+
+// Listen for config changes from other components
+export function initInventoryAgeConfigListener(): void {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('inventory-age-config-changed', (e: Event) => {
+      const customEvent = e as CustomEvent<InventoryAgeMasterConfig>;
+      currentAgeMasterConfig = customEvent.detail;
+    });
+  }
+}
+
 /**
- * Calculate inventory age status based on age in days
+ * Calculate inventory age status based on age in months using master config
  */
 export function calculateInventoryAgeStatus(ageDays: number): 'good' | 'slow' | 'bad' {
-  if (ageDays >= currentAgeConfig.bad.min) return 'bad';
-  if (ageDays >= currentAgeConfig.slow.min) return 'slow';
+  const ageMonths = ageDays / 30;
+  if (ageMonths >= currentAgeMasterConfig.badMinMonths) return 'bad';
+  if (ageMonths >= currentAgeMasterConfig.slowMinMonths) return 'slow';
   return 'good';
+}
+
+/**
+ * Get age bucket label and color using master config
+ */
+export function getAgeBucketInfo(ageDays: number): { label: string; color: string; status: 'good' | 'slow' | 'bad' } {
+  const status = calculateInventoryAgeStatus(ageDays);
+  const config = currentAgeMasterConfig;
+  switch (status) {
+    case 'good':
+      return { label: config.goodLabel, color: config.goodColor, status };
+    case 'slow':
+      return { label: config.slowLabel, color: config.slowColor, status };
+    case 'bad':
+      return { label: config.badLabel, color: config.badColor, status };
+  }
 }
 
 /**
@@ -168,15 +253,6 @@ export function calculateInventoryAge(batchDate: string | Date): number {
   const today = new Date();
   const diffTime = today.getTime() - batch.getTime();
   return Math.floor(diffTime / (1000 * 60 * 60 * 24));
-}
-
-/**
- * Get age bucket label and color
- */
-export function getAgeBucketInfo(ageDays: number): { label: string; color: string; status: 'good' | 'slow' | 'bad' } {
-  const status = calculateInventoryAgeStatus(ageDays);
-  const config = currentAgeConfig[status];
-  return { label: config.label, color: config.color, status };
 }
 
 // ============================================
@@ -259,6 +335,24 @@ export function calculateStockOutGapUnits(forecastDemand: number, availableStock
 export function calculateStockOutGapValue(forecastDemand: number, availableStock: number, priceUSD: number): number {
   const gap = calculateStockOutGapUnits(forecastDemand, availableStock);
   return gap * priceUSD;
+}
+
+/**
+ * Calculate Stock Gap (Units) - shows 0 if excess stock
+ * Formula: max(0, Available Stock - Avg Monthly Sales)
+ */
+export function calculateStockGapUnits(availableStock: number, avgMonthlySales: number): number {
+  const gap = availableStock - avgMonthlySales;
+  return Math.max(0, gap);
+}
+
+/**
+ * Calculate Stock Gap (Value) - shows 0 if excess stock
+ * Formula: max(0, (Available Stock - Avg Monthly Sales) × Price)
+ */
+export function calculateStockGapValue(availableStock: number, avgMonthlySales: number, priceUSD: number): number {
+  const gapUnits = calculateStockGapUnits(availableStock, avgMonthlySales);
+  return gapUnits * priceUSD;
 }
 
 /**
@@ -361,7 +455,7 @@ export function calculateStatisticalSafetyStock(
     0.99: 2.33,
   };
   const z = zScores[serviceLevel] || 1.645;
-  
+
   // Safety Stock = Z × √(Lead Time) × Standard Deviation of Demand
   return Math.round(z * Math.sqrt(leadTime) * demandStdDev);
 }
@@ -394,12 +488,12 @@ export function performABCAnalysis(materials: MaterialForABC[]): ABCAnalysisResu
   const materialsWithMetrics = materials.map(mat => {
     const totalSalesUnits = mat.historicalSales.reduce((a, b) => a + b, 0);
     const totalSalesValue = totalSalesUnits * mat.priceUSD;
-    const avgMonthlySales = mat.historicalSales.length > 0 
-      ? Math.round(totalSalesUnits / mat.historicalSales.length) 
+    const avgMonthlySales = mat.historicalSales.length > 0
+      ? Math.round(totalSalesUnits / mat.historicalSales.length)
       : 0;
     const avgMonthlySalesValue = avgMonthlySales * mat.priceUSD;
     const stockCoverageMonths = calculateStockCoverageMonths(mat.currentStock, avgMonthlySales);
-    
+
     // Calculate forecast accuracy if we have forecast data
     let forecastAccuracy = 100;
     if (mat.historicalForecasts && mat.historicalForecasts.length > 0) {
@@ -409,16 +503,18 @@ export function performABCAnalysis(materials: MaterialForABC[]): ABCAnalysisResu
         forecastAccuracy = 100 - calculateMAPE(actuals, forecasts);
       }
     }
-    
-    // Calculate stock out gap
-    const currentForecast = mat.forecastDemand || avgMonthlySales;
-    const stockOutGapUnits = calculateStockOutGapUnits(currentForecast, mat.currentStock);
-    const stockOutGapValue = calculateStockOutGapValue(currentForecast, mat.currentStock, mat.priceUSD);
-    
+
+    // Calculate stock gap using new formula (shows 0 if excess stock)
+    const stockGapUnits = calculateStockGapUnits(mat.currentStock, avgMonthlySales);
+    const stockGapValue = calculateStockGapValue(mat.currentStock, avgMonthlySales, mat.priceUSD);
+
+    // Calculate stock value
+    const stockValue = mat.currentStock * mat.priceUSD;
+
     // Calculate inventory age
     const inventoryAgeDays = mat.batchDate ? calculateInventoryAge(mat.batchDate) : 0;
     const inventoryAgeStatus = calculateInventoryAgeStatus(inventoryAgeDays);
-    
+
     return {
       materialId: mat.id,
       materialName: mat.description,
@@ -430,12 +526,13 @@ export function performABCAnalysis(materials: MaterialForABC[]): ABCAnalysisResu
       avgMonthlySales,
       avgMonthlySalesValue,
       currentStock: mat.currentStock,
+      stockValue,
       stockCoverageMonths,
       isOutOfStock: mat.currentStock <= 0,
       riskLevel: (stockCoverageMonths < 1 ? 'high' : stockCoverageMonths < 2 ? 'medium' : 'low') as 'high' | 'medium' | 'low',
       forecastAccuracy,
-      stockOutGapUnits,
-      stockOutGapValue,
+      stockGapUnits,
+      stockGapValue,
       inventoryAgeDays,
       inventoryAgeStatus,
       batchDate: mat.batchDate,
@@ -455,7 +552,7 @@ export function performABCAnalysis(materials: MaterialForABC[]): ABCAnalysisResu
     cumulativeValue += mat.totalSalesValue;
     const contribution = grandTotalSalesValue > 0 ? (mat.totalSalesValue / grandTotalSalesValue) * 100 : 0;
     const cumulative = grandTotalSalesValue > 0 ? (cumulativeValue / grandTotalSalesValue) * 100 : 0;
-    
+
     // Classify based on cumulative contribution
     let classification: 'A' | 'B' | 'C' = 'C';
     if (cumulative <= 80) {
@@ -552,7 +649,7 @@ export function weightedMovingAverage(historicalSales: number[], weights?: numbe
   const n = historicalSales.length;
   const defaultWeights = Array.from({ length: n }, (_, i) => (i + 1) / ((n * (n + 1)) / 2));
   const w = weights || defaultWeights;
-  
+
   let sum = 0;
   let weightSum = 0;
   for (let i = 0; i < n; i++) {
@@ -569,7 +666,7 @@ export function weightedMovingAverage(historicalSales: number[], weights?: numbe
 export function exponentialSmoothing(historicalSales: number[], alpha: number = 0.3): number {
   if (historicalSales.length === 0) return 0;
   if (historicalSales.length === 1) return historicalSales[0];
-  
+
   let forecast = historicalSales[0];
   for (let i = 1; i < historicalSales.length; i++) {
     forecast = alpha * historicalSales[i] + (1 - alpha) * forecast;
@@ -587,16 +684,16 @@ export function holtSmoothing(
   periodsAhead: number = 1
 ): number {
   if (historicalSales.length < 2) return historicalSales[0] || 0;
-  
+
   let level = historicalSales[0];
   let trend = historicalSales[1] - historicalSales[0];
-  
+
   for (let i = 1; i < historicalSales.length; i++) {
     const prevLevel = level;
     level = alpha * historicalSales[i] + (1 - alpha) * (level + trend);
     trend = beta * (level - prevLevel) + (1 - beta) * trend;
   }
-  
+
   return Math.round(level + periodsAhead * trend);
 }
 
@@ -605,19 +702,19 @@ export function holtSmoothing(
  */
 export function linearRegressionForecast(historicalSales: number[], periodsAhead: number = 1): number {
   if (historicalSales.length < 2) return historicalSales[0] || 0;
-  
+
   const n = historicalSales.length;
   const x = Array.from({ length: n }, (_, i) => i);
   const y = historicalSales;
-  
+
   const sumX = x.reduce((a, b) => a + b, 0);
   const sumY = y.reduce((a, b) => a + b, 0);
   const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
   const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
-  
+
   const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
   const intercept = (sumY - slope * sumX) / n;
-  
+
   return Math.round(slope * (n - 1 + periodsAhead) + intercept);
 }
 
@@ -632,7 +729,7 @@ export function seasonalForecast(
   if (historicalSales.length < seasonLength * 2) {
     return movingAverageForecast(historicalSales, 3);
   }
-  
+
   const seasons: number[][] = [];
   for (let i = 0; i < seasonLength; i++) {
     seasons[i] = [];
@@ -640,17 +737,17 @@ export function seasonalForecast(
       seasons[i].push(historicalSales[j]);
     }
   }
-  
-  const seasonalIndices = seasons.map(season => 
+
+  const seasonalIndices = seasons.map(season =>
     season.length > 0 ? season.reduce((a, b) => a + b, 0) / season.length : 0
   );
-  
+
   const overallAverage = historicalSales.reduce((a, b) => a + b, 0) / historicalSales.length;
   const normalizedIndices = seasonalIndices.map(idx => idx / overallAverage);
-  
+
   const trend = linearRegressionForecast(historicalSales, periodsAhead);
   const seasonalIndex = normalizedIndices[(historicalSales.length + periodsAhead - 1) % seasonLength];
-  
+
   return Math.round(trend * seasonalIndex);
 }
 
@@ -665,35 +762,35 @@ export function analyzeTrend(historicalSales: number[]): TrendAnalysis {
   if (historicalSales.length < 3) {
     return { direction: 'stable', slope: 0, strength: 0, seasonalFactor: 1 };
   }
-  
+
   const n = historicalSales.length;
   const x = Array.from({ length: n }, (_, i) => i);
-  
+
   const sumX = x.reduce((a, b) => a + b, 0);
   const sumY = historicalSales.reduce((a, b) => a + b, 0);
   const sumXY = x.reduce((sum, xi, i) => sum + xi * historicalSales[i], 0);
   const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
   const sumYY = historicalSales.reduce((sum, yi) => sum + yi * yi, 0);
-  
+
   const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  
+
   // Calculate R-squared for strength
   const ssTot = sumYY - (sumY * sumY) / n;
   const ssRes = sumYY - slope * sumXY - (sumY * sumY) / n + (slope * sumX * sumY) / n;
   const rSquared = ssTot !== 0 ? 1 - ssRes / ssTot : 0;
-  
+
   // Determine direction
   let direction: 'up' | 'down' | 'stable' = 'stable';
   if (slope > historicalSales.reduce((a, b) => a + b, 0) / n * 0.05) direction = 'up';
   else if (slope < -historicalSales.reduce((a, b) => a + b, 0) / n * 0.05) direction = 'down';
-  
+
   // Calculate seasonal factor (simple)
   const firstHalf = historicalSales.slice(0, Math.floor(n / 2));
   const secondHalf = historicalSales.slice(Math.floor(n / 2));
   const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
   const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
   const seasonalFactor = firstAvg !== 0 ? secondAvg / firstAvg : 1;
-  
+
   return {
     direction,
     slope,
@@ -754,7 +851,7 @@ export function processInventoryRecord(
   const avgDailyDemand = (record.actualSales || record.forecastDemand) / 30;
   const stockCoverageDays = calculateStockCoverage(closingStock, avgDailyDemand);
   const stockoutRisk = calculateStockoutRisk(closingStock, record.safetyStock, record.forecastDemand);
-  
+
   // Calculate new metrics
   const totalStockUnits = calculateTotalStockUnits(record.openingStock, record.stockInTransit);
   const totalStockValue = calculateTotalStockValue(totalStockUnits, record.priceUSD || 0);
@@ -766,7 +863,7 @@ export function processInventoryRecord(
   const stockCoverageMonths = calculateStockCoverageMonths(totalStockUnits, avgMonthlySales);
   const monthOutOfStock = calculateMonthOutOfStock(record.forecastDemand, totalStockUnits);
   const monthOutOfStockValue = calculateMonthOutOfStockValue(record.forecastDemand, totalStockUnits, record.priceUSD || 0);
-  
+
   // Additional metrics
   const forecastError = record.actualSales > 0 ? record.forecastDemand - record.actualSales : 0;
   const bias = record.actualSales > 0 ? (record.forecastDemand - record.actualSales) / record.actualSales * 100 : 0;
@@ -799,16 +896,16 @@ export function processInventoryRecord(
  */
 export function calculateAggregateMetrics(results: ForecastResult[]): ForecastMetrics {
   const withActuals = results.filter(r => r.actualSales > 0);
-  
+
   if (withActuals.length === 0) {
     return { accuracy: 0, bias: 0, mape: 0, rmse: 0, trackingSignal: 0 };
   }
-  
+
   const actuals = withActuals.map(r => r.actualSales);
   const forecasts = withActuals.map(r => r.forecastDemand);
-  
+
   const avgAccuracy = withActuals.reduce((sum, r) => sum + r.forecastAccuracy, 0) / withActuals.length;
-  
+
   return {
     accuracy: avgAccuracy,
     bias: calculateBias(actuals, forecasts),

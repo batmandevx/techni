@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -150,8 +150,8 @@ const MobileCard = ({ item, onClick }: { item: ABCAnalysisResult; onClick?: () =
         </div>
         <div>
           <p className="text-xs text-gray-400 dark:text-slate-500">Stock Gap</p>
-          <p className={`font-medium ${item.stockOutGapUnits > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-            {item.stockOutGapUnits > 0 ? `-${item.stockOutGapUnits.toLocaleString()}` : 'OK'}
+          <p className={`font-medium ${item.stockGapUnits > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            {item.stockGapUnits > 0 ? item.stockGapUnits.toLocaleString() : '0'}
           </p>
         </div>
         <div>
@@ -214,14 +214,14 @@ const DetailModal = ({ item, onClose }: { item: ABCAnalysisResult | null; onClos
                 <p className="text-lg font-bold text-gray-900 dark:text-white">{item.currentStock.toLocaleString()}</p>
               </div>
               <div className="p-3 rounded-lg bg-gray-50 dark:bg-slate-800">
-                <p className="text-xs text-gray-500">Stock Out Gap</p>
-                <p className={`text-lg font-bold ${item.stockOutGapUnits > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                  {item.stockOutGapUnits > 0 ? item.stockOutGapUnits.toLocaleString() : 'OK'}
+                <p className="text-xs text-gray-500">Stock Gap</p>
+                <p className={`text-lg font-bold ${item.stockGapUnits > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {item.stockGapUnits > 0 ? item.stockGapUnits.toLocaleString() : '0'}
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-gray-50 dark:bg-slate-800">
                 <p className="text-xs text-gray-500">Gap Value</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">${item.stockOutGapValue.toLocaleString()}</p>
+                <p className="text-lg font-bold text-gray-900 dark:text-white">${item.stockGapValue.toLocaleString()}</p>
               </div>
               <div className="p-3 rounded-lg bg-gray-50 dark:bg-slate-800">
                 <p className="text-xs text-gray-500">Forecast Accuracy</p>
@@ -405,6 +405,21 @@ export default function ABCDashboardPage() {
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  // Calculate totals for filtered data
+  const totals = useMemo(() => {
+    return filteredData.reduce((acc, item) => ({
+      avgMonthlySalesValue: acc.avgMonthlySalesValue + item.avgMonthlySalesValue,
+      stockValue: acc.stockValue + (item.stockValue ?? 0),
+      stockGapUnits: acc.stockGapUnits + item.stockGapUnits,
+      stockGapValue: acc.stockGapValue + item.stockGapValue,
+    }), {
+      avgMonthlySalesValue: 0,
+      stockValue: 0,
+      stockGapUnits: 0,
+      stockGapValue: 0,
+    });
+  }, [filteredData]);
+
   // Get unique categories
   const categories = useMemo(() => {
     const cats = new Set(abcData.map(item => item.category));
@@ -442,6 +457,51 @@ export default function ABCDashboardPage() {
     setAgeConfig(getInventoryAgeConfig());
   };
 
+  const handleExport = useCallback(async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+
+      // ABC Analysis Sheet
+      const rows = filteredData.map(item => ({
+        'ABC Class': item.classification,
+        'SKU ID': item.materialId,
+        'Description': item.materialName,
+        'Category': item.category,
+        'Avg Monthly Sales (Units)': item.avgMonthlySales,
+        'Avg Monthly Sales Value ($)': item.avgMonthlySalesValue.toFixed(2),
+        'Contribution (%)': item.salesValueContribution.toFixed(2),
+        'Cumulative (%)': item.cumulativeContribution.toFixed(2),
+        'Stock Value ($)': (item.stockValue || 0).toFixed(2),
+        'Coverage (Months)': item.stockCoverageMonths.toFixed(2),
+        'Stock Gap (Units)': item.stockGapUnits,
+        'Gap Value ($)': item.stockGapValue.toFixed(2),
+        'Forecast Accuracy (%)': item.forecastAccuracy.toFixed(1),
+        'Age Status': item.inventoryAgeStatus === 'good' ? 'Good' : item.inventoryAgeStatus === 'slow' ? 'Slow Moving' : 'Bad Inventory',
+        'Age (Days)': item.inventoryAgeDays,
+        'Status': item.stockCoverageMonths < 1 ? 'Action for Provision' : item.stockCoverageMonths < 2 ? 'Action for Sales' : 'Healthy',
+      }));
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'ABC Analysis');
+
+      // Summary Sheet
+      const lowCoverageA = abcData.filter(r => r.classification === 'A' && r.stockCoverageMonths < 1).length;
+      const lowCoverageB = abcData.filter(r => r.classification === 'B' && r.stockCoverageMonths < 1).length;
+      const lowCoverageC = abcData.filter(r => r.classification === 'C' && r.stockCoverageMonths < 1).length;
+      const summaryRows = [
+        ['Class', 'SKU Count', 'Total Sales Value ($)', 'Avg Coverage (Months)', 'Low Coverage SKUs'],
+        ['A', summary.a.count, summary.a.totalValue.toFixed(2), summary.a.avgCoverage.toFixed(2), lowCoverageA],
+        ['B', summary.b.count, summary.b.totalValue.toFixed(2), summary.b.avgCoverage.toFixed(2), lowCoverageB],
+        ['C', summary.c.count, summary.c.totalValue.toFixed(2), summary.c.avgCoverage.toFixed(2), lowCoverageC],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+
+      XLSX.writeFile(wb, `ABC_Analysis_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
+  }, [filteredData, summary]);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
       {/* Header */}
@@ -465,7 +525,7 @@ export default function ABCDashboardPage() {
                 <Settings size={16} />
                 <span className="hidden sm:inline">Age Config</span>
               </button>
-              <button className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
+              <button onClick={handleExport} className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700">
                 <Download size={16} />
                 <span className="hidden sm:inline">Export</span>
               </button>
@@ -498,13 +558,16 @@ export default function ABCDashboardPage() {
           <KPICard
             title="Avg Forecast Accuracy"
             value={`${(abcData.reduce((sum, a) => sum + a.forecastAccuracy, 0) / abcData.length).toFixed(0)}%`}
-            subtitle="Across all SKUs"
+            subtitle="M-1 previous month actuals"
             icon={TrendingUp}
             color="#3b82f6"
           />
           <KPICard
             title="Total Stock Value"
-            value={`$${(abcData.reduce((sum, a) => sum + a.currentStock * (a.totalSalesValue / (a.avgMonthlySales * 6 || 1)), 0) / 1000).toFixed(1)}k`}
+            value={(() => {
+              const total = abcData.reduce((sum, a) => sum + (a.stockValue ?? 0), 0);
+              return total >= 1000000 ? `$${(total / 1000000).toFixed(1)}M` : `$${(total / 1000).toFixed(1)}k`;
+            })()}
             subtitle="Current inventory"
             icon={DollarSign}
             color="#8b5cf6"
@@ -529,11 +592,11 @@ export default function ABCDashboardPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {summary.lowCoverage.items.map((item, idx) => (
-                    <span 
+                    <span
                       key={idx}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-100 dark:bg-red-500/20 text-xs font-medium text-red-700 dark:text-red-400"
                     >
-                      {item.sku} - {item.name} ({item.coverage.toFixed(1)} mo)
+                      {item.sku} · {item.name} · {item.category} ({item.coverage.toFixed(1)} mo)
                     </span>
                   ))}
                 </div>
@@ -784,6 +847,7 @@ export default function ABCDashboardPage() {
                     Avg Monthly Value {sortConfig.key === 'avgMonthlySalesValue' && (sortConfig.direction === 'desc' ? <ChevronDown size={12} className="inline" /> : <ChevronUp size={12} className="inline" />)}
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Contribution</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Stock Value</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400 cursor-pointer hover:text-gray-700" onClick={() => handleSort('stockCoverageMonths')}>
                     Coverage {sortConfig.key === 'stockCoverageMonths' && (sortConfig.direction === 'desc' ? <ChevronDown size={12} className="inline" /> : <ChevronUp size={12} className="inline" />)}
                   </th>
@@ -795,6 +859,27 @@ export default function ABCDashboardPage() {
                 </tr>
               </thead>
               <tbody>
+                {/* Total Row */}
+                <tr className="bg-indigo-50/50 dark:bg-indigo-500/10 border-t border-gray-100 dark:border-slate-800">
+                  <td className="px-4 py-3 text-center" colSpan={4}>
+                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">TOTAL</span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 dark:text-white">
+                    ${totals.avgMonthlySalesValue.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 dark:text-white">
+                    ${totals.stockValue.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-amber-600 dark:text-amber-400">
+                    {totals.stockGapUnits.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 dark:text-white">
+                    ${totals.stockGapValue.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3" colSpan={2}></td>
+                </tr>
                 {paginatedData.map((item, i) => (
                   <motion.tr
                     key={item.materialId}
@@ -823,6 +908,9 @@ export default function ABCDashboardPage() {
                         <span className="text-gray-600 dark:text-slate-400 text-xs">{item.salesValueContribution.toFixed(1)}%</span>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
+                      ${(item.stockValue ?? 0).toLocaleString()}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <span className={`font-medium ${
                         item.stockCoverageMonths < 1 ? 'text-red-600 dark:text-red-400' : 
@@ -833,12 +921,12 @@ export default function ABCDashboardPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`font-medium ${item.stockOutGapUnits > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {item.stockOutGapUnits > 0 ? `-${item.stockOutGapUnits.toLocaleString()}` : 'OK'}
+                      <span className={`font-medium ${item.stockGapUnits > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {item.stockGapUnits > 0 ? item.stockGapUnits.toLocaleString() : '0'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                      {item.stockOutGapValue !== 0 ? `$${item.stockOutGapValue.toLocaleString()}` : '-'}
+                      {item.stockGapValue > 0 ? `$${item.stockGapValue.toLocaleString()}` : '$0'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className={`font-medium ${item.forecastAccuracy >= 90 ? 'text-emerald-600 dark:text-emerald-400' : item.forecastAccuracy >= 80 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -855,15 +943,15 @@ export default function ABCDashboardPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {item.isOutOfStock ? (
+                      {item.stockCoverageMonths < 1 ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-400">
                           <AlertCircle size={12} />
-                          Out
+                          Action for Provision
                         </span>
-                      ) : item.stockCoverageMonths < 1 ? (
+                      ) : item.stockCoverageMonths < 2 ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700 dark:bg-orange-500/20 dark:text-orange-400">
                           <AlertTriangle size={12} />
-                          At Risk
+                          Action for Sales
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">

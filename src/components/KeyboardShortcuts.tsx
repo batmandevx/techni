@@ -20,8 +20,18 @@ const shortcuts: Shortcut[] = [
   { key: 'Esc', description: 'Close modal / Cancel' },
 ];
 
-export function KeyboardShortcuts() {
-  const [isOpen, setIsOpen] = useState(false);
+interface KeyboardShortcutsProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function KeyboardShortcuts({ isOpen: externalIsOpen, onClose: externalOnClose }: KeyboardShortcutsProps = {}) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
+  const setIsOpen = (val: boolean) => {
+    setInternalIsOpen(val);
+    if (!val && externalOnClose) externalOnClose();
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
