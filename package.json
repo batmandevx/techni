@@ -17,8 +17,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force && npm run db:seed",
-    "db:setup": "prisma generate && prisma migrate dev --name init && npm run db:seed",
-    "postinstall": "prisma generate"
+    "db:setup": "prisma generate && prisma migrate dev --name init && npm run db:seed"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.5",
@@ -81,5 +80,9 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "resolutions": {
+    "prisma": "5.22.0",
+    "@prisma/client": "5.22.0"
   }
 }
