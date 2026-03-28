@@ -15,6 +15,7 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
     let logoCX: number, logoCY: number, S: number;
 
     function resize() {
+      if (!canvas || !ctx) return;
       dpr = window.devicePixelRatio || 1;
       W = window.innerWidth;
       H = window.innerHeight;
@@ -28,7 +29,9 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       logoCY = H / 2;
     }
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', () => {
+      resize();
+    });
 
     // Easing functions
     function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
