@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TenchiOne — Animated Logo</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a1628;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Outfit', sans-serif;
+  }
+  canvas#main {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .replay-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 100;
+    background: rgba(0, 184, 255, 0.08);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0, 184, 255, 0.2);
+    color: #00b8ff;
+    padding: 10px 24px;
+    border-radius: 100px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .replay-btn:hover {
+    background: rgba(0, 184, 255, 0.16);
+    border-color: rgba(0, 184, 255, 0.5);
+    box-shadow: 0 0 30px rgba(0, 184, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  .replay-btn svg { width: 14px; height: 14px; transition: transform 0.4s ease; }
+  .replay-btn:hover svg { transform: rotate(-180deg); }
+</style>
+</head>
+<body>
+<canvas id="main"></canvas>
+<button class="replay-btn" onclick="restartAnimation()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+  Replay
+</button>
+<script>
+const canvas = document.getElementById('main');
+const ctx = canvas.getContext('2d');
+let W, H, dpr, startTime, animFrame;
+let logoCX, logoCY, S;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S = Math.min(W / 1100, H / 600);
+  logoCX = W / 2 - 100 * S;
+  logoCY = H / 2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Easing ──
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+function easeOutExpo(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); }
+
+// ══════════════════════════════════════════════════
+// PROPER INFINITY using cubic bezier leaf shapes
+// Each loop: center → top curve → far side → bottom curve → center
+// ══════════════════════════════════════════════════
+
+function buildLoop(farX, height, narrowTop, narrowBot, farTopY, farBotY) {
+  // farX: x of farthest point (negative for left, positive for right)
+  // height: how tall the top/bottom arcs go
+  // narrowTop/narrowBot: x of control points near center (controls the pinch)
+  // farTopY/farBotY: fine-tune the far-side control point heights
+  return {
+    top: {
+      p0: {x: 0, y: 0},
+      cp1: {x: narrowTop, y: -height * 0.92},
+      cp2: {x: farX * 0.85, y: farTopY || -height * 0.95},
+      p1: {x: farX, y: 0}
+    },
+    bot: {
+      p0: {x: farX, y: 0},
+      cp1: {x: farX * 0.85, y: farBotY || height * 0.95},
+      cp2: {x: narrowBot, y: height * 0.92},
+      p1: {x: 0, y: 0}
+    }
+  };
+}
+
+// Blue side (left) — rounder, cleaner
+const blueMain   = buildLoop(-108, 62,  -38, -38);
+const blueOuter  = buildLoop(-120, 74,  -42, -42);
+
+// Gold side (right) — organic feel with multiple offset rings
+const goldMain   = buildLoop(105,  58,   35,  35);
+const goldOuter  = buildLoop(118,  70,   40,  40);
+const goldRing3  = buildLoop(98,   50,   30,  30);
+const goldRing4  = buildLoop(94,   46,   27,  27);
+
+// ── Bezier math ──
+function bezPt(p0, cp1, cp2, p1, t) {
+  const m = 1-t;
+  return {
+    x: m*m*m*p0.x + 3*m*m*t*cp1.x + 3*m*t*t*cp2.x + t*t*t*p1.x,
+    y: m*m*m*p0.y + 3*m*m*t*cp1.y + 3*m*t*t*cp2.y + t*t*t*p1.y
+  };
+}
+
+function loopPt(loop, t) {
+  // t: 0→1 full loop. 0→0.5 = top arc, 0.5→1 = bottom arc
+  if (t <= 0.5) {
+    return bezPt(loop.top.p0, loop.top.cp1, loop.top.cp2, loop.top.p1, t*2);
+  } else {
+    return bezPt(loop.bot.p0, loop.bot.cp1, loop.bot.cp2, loop.bot.p1, (t-0.5)*2);
+  }
+}
+
+function strokeLoopPartial(loop, progress, ox, oy, sc) {
+  if (progress <= 0) return;
+  const N = 180;
+  const maxT = progress;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * maxT;
+    const p = loopPt(loop, t);
+    const x = ox + p.x * sc;
+    const y = oy + p.y * sc;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function strokeLoopFull(loop, ox, oy, sc) {
+  strokeLoopPartial(loop, 1, ox, oy, sc);
+}
+
+// ── Draw ring ──
+function drawRing(loop, progress, color, lineW, glowCol, glowSz) {
+  if (progress <= 0) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineW * S;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = glowCol;
+  ctx.shadowBlur = glowSz * S;
+  strokeLoopPartial(loop, easeInOutCubic(progress), logoCX, logoCY, S);
+  ctx.restore();
+}
+
+// ── Crossing lines ──
+function drawCrossing(progress, t) {
+  if (progress <= 0) return;
+  const ep = easeOutCubic(progress);
+  const hw = 45 * S * ep;
+  const hh = 36 * S * ep;
+
+  const grad = ctx.createLinearGradient(logoCX-hw, logoCY, logoCX+hw, logoCY);
+  grad.addColorStop(0, 'rgba(0,200,255,0.45)');
+  grad.addColorStop(0.42, 'rgba(61,220,132,0.95)');
+  grad.addColorStop(0.58, 'rgba(61,220,132,0.95)');
+  grad.addColorStop(1, 'rgba(240,184,64,0.45)');
+
+  ctx.save();
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 1.8 * S; ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(61,220,132,0.55)';
+  ctx.shadowBlur = 10 * S;
+
+  ctx.beginPath();
+  ctx.moveTo(logoCX - hw, logoCY - hh);
+  ctx.lineTo(logoCX + hw, logoCY + hh);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(logoCX - hw, logoCY + hh);
+  ctx.lineTo(logoCX + hw, logoCY - hh);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ══════════════════════════════════
+// PARTICLES
+// ══════════════════════════════════
+let particles = [];
+class Particle {
+  constructor(x,y,color,opts={}) {
+    this.x=x; this.y=y; this.color=color;
+    this.vx=(opts.vx||(Math.random()-0.5)*1.5)*S;
+    this.vy=(opts.vy||(Math.random()-0.5)*1.5)*S;
+    this.size=(opts.size||(Math.random()*2+0.5))*S;
+    this.life=1; this.decay=opts.decay||(Math.random()*0.018+0.006);
+  }
+  update(){this.x+=this.vx;this.y+=this.vy;this.life-=this.decay;this.vx*=0.99;this.vy*=0.99;}
+  draw(){
+    if(this.life<=0)return;
+    ctx.save();ctx.globalAlpha=this.life*0.65;
+    ctx.fillStyle=this.color;ctx.shadowColor=this.color;ctx.shadowBlur=6*S;
+    ctx.beginPath();ctx.arc(this.x,this.y,this.size*this.life,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+}
+
+function spawnBurst(x,y,color,n) {
+  for(let i=0;i<n;i++){
+    const a=(Math.PI*2/n)*i+Math.random()*0.4;
+    const spd=Math.random()*3+1;
+    particles.push(new Particle(x,y,color,{
+      vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,
+      size:Math.random()*2.5+0.5,decay:Math.random()*0.015+0.008
+    }));
+  }
+}
+
+// ══════════════════════════════════
+// ENERGY RINGS
+// ══════════════════════════════════
+let energyRings = [];
+function spawnRing(x,y,color){energyRings.push({x,y,color,r:0,life:1});}
+
+// ══════════════════════════════════
+// TRAVELING ORBS with tails
+// ══════════════════════════════════
+class Orb {
+  constructor(loop, color, speed, size) {
+    this.loop=loop; this.color=color;
+    this.speed=speed; this.size=size;
+    this.t=Math.random(); this.trail=[];
+  }
+  update(dt) {
+    this.t = (this.t + this.speed*dt) % 1;
+    const p = loopPt(this.loop, this.t);
+    this.trail.unshift({x: logoCX+p.x*S, y: logoCY+p.y*S});
+    if (this.trail.length > 24) this.trail.pop();
+  }
+  draw() {
+    if(this.trail.length<2)return;
+    for(let i=1;i<this.trail.length;i++){
+      const a=(1-i/this.trail.length)*0.4;
+      const sz=this.size*(1-i/this.trail.length)*S;
+      ctx.save();ctx.globalAlpha=a;
+      ctx.fillStyle=this.color;ctx.shadowColor=this.color;ctx.shadowBlur=5*S;
+      ctx.beginPath();ctx.arc(this.trail[i].x,this.trail[i].y,sz,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    }
+    const h=this.trail[0];
+    ctx.save();ctx.fillStyle='#fff';ctx.shadowColor=this.color;ctx.shadowBlur=16*S;
+    ctx.beginPath();ctx.arc(h.x,h.y,this.size*S,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=0.6;ctx.fillStyle=this.color;
+    ctx.beginPath();ctx.arc(h.x,h.y,this.size*1.6*S,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+}
+
+let orbs = [];
+function initOrbs() {
+  orbs = [
+    new Orb(blueMain, '#00d8ff', 0.00024, 3),
+    new Orb(goldMain, '#f0b840', 0.0002, 3),
+    new Orb(blueOuter, '#00d8ff', 0.00017, 2.2),
+    new Orb(goldOuter, '#f0b840', 0.00021, 2.2),
+  ];
+}
+
+// ══════════════════════════════════
+// STARS
+// ══════════════════════════════════
+let stars = [];
+function initStars() {
+  stars = [];
+  for (let i=0;i<70;i++) {
+    stars.push({
+      x:Math.random()*W, y:Math.random()*H,
+      size:Math.random()*1.3+0.3,
+      speed:Math.random()*0.003+0.001,
+      offset:Math.random()*Math.PI*2,
+      alpha:Math.random()*0.25+0.08
+    });
+  }
+}
+initStars();
+
+function drawStars(t) {
+  stars.forEach(s=>{
+    const f=0.5+0.5*Math.sin(t*s.speed+s.offset);
+    ctx.globalAlpha=s.alpha*f;
+    ctx.fillStyle='#b0c8e0';
+    ctx.beginPath();ctx.arc(s.x,s.y,s.size*S,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+}
+
+// ══════════════════════════════════
+// BACKGROUND
+// ══════════════════════════════════
+function drawBG() {
+  const g=ctx.createRadialGradient(logoCX,logoCY,0,logoCX,logoCY,Math.max(W,H)*0.7);
+  g.addColorStop(0,'#10223a');g.addColorStop(0.35,'#0c1a2e');g.addColorStop(1,'#060e1a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  const v=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.3,W/2,H/2,Math.max(W,H)*0.75);
+  v.addColorStop(0,'transparent');v.addColorStop(1,'rgba(4,8,16,0.5)');
+  ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+}
+
+// ══════════════════════════════════
+// AMBIENT GLOW
+// ══════════════════════════════════
+function drawAmbientGlow(t) {
+  const p=0.6+0.15*Math.sin(t*0.001);
+  [{x:-95,c:'#00b8ff',a:0.07,r:160},{x:95,c:'#f0b840',a:0.055,r:150},{x:0,c:'#3ddc84',a:0.04,r:70}].forEach(g=>{
+    ctx.save();ctx.globalAlpha=g.a*p;
+    const gr=ctx.createRadialGradient(logoCX+g.x*S,logoCY,0,logoCX+g.x*S,logoCY,g.r*S);
+    gr.addColorStop(0,g.c);gr.addColorStop(1,'transparent');
+    ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);ctx.restore();
+  });
+}
+
+// ══════════════════════════════════
+// GLOW DOTS
+// ══════════════════════════════════
+function drawGlowDots(dp, t) {
+  if(dp<=0)return;
+  const pulse=i=>0.65+0.35*Math.sin(t*0.002+i*1.3);
+
+  const dots = [
+    {loop:blueMain, lt:0.5, color:'#00d8ff', sz:4.5},     // far-left blue
+    {loop:blueOuter, lt:0.2, color:'#00d8ff', sz:3.5},     // top-left blue
+    {loop:blueOuter, lt:0.8, color:'#00d8ff', sz:3},       // bottom-left blue
+    {x:logoCX, y:logoCY, color:'#3ddc84', sz:5.5},         // center
+    {loop:goldOuter, lt:0.22, color:'#f0b840', sz:4.5},    // top-right gold
+    {loop:goldMain, lt:0.5, color:'#f0b840', sz:3.5},      // far-right gold
+    {loop:goldOuter, lt:0.78, color:'#f0b840', sz:3},      // bottom-right gold
+  ];
+
+  dots.forEach((d,i)=>{
+    const cp=Math.max(0,Math.min(1,(dp-i*0.06)/0.4));
+    if(cp<=0)return;
+    const ep=easeOutCubic(cp);
+    const a=pulse(i)*ep;
+    let x,y;
+    if(d.loop){const pt=loopPt(d.loop,d.lt);x=logoCX+pt.x*S;y=logoCY+pt.y*S;}
+    else{x=d.x;y=d.y;}
+    const sz=d.sz*S*ep;
+
+    // Soft glow
+    ctx.save();ctx.globalAlpha=a*0.22;
+    ctx.fillStyle=d.color;ctx.shadowColor=d.color;ctx.shadowBlur=28*S;
+    ctx.beginPath();ctx.arc(x,y,sz*3.5,0,Math.PI*2);ctx.fill();ctx.restore();
+    // Mid glow
+    ctx.save();ctx.globalAlpha=a*0.5;
+    ctx.fillStyle=d.color;ctx.shadowColor=d.color;ctx.shadowBlur=14*S;
+    ctx.beginPath();ctx.arc(x,y,sz*1.6,0,Math.PI*2);ctx.fill();ctx.restore();
+    // Core
+    ctx.save();ctx.globalAlpha=a*0.9;
+    ctx.fillStyle='#fff';ctx.shadowColor=d.color;ctx.shadowBlur=10*S;
+    ctx.beginPath();ctx.arc(x,y,sz*0.65,0,Math.PI*2);ctx.fill();ctx.restore();
+  });
+}
+
+// ══════════════════════════════════
+// TEXT — CINEMATIC ANIMATION SYSTEM
+// ══════════════════════════════════
+
+// Track per-letter sparkle spawns
+let letterSparklesSpawned = new Set();
+// Track "One" energy burst
+let oneBurstSpawned = false;
+
+// Elastic ease for bounce settle
+function easeOutElastic(t) {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10*t) * Math.sin((t - 0.075) * (2*Math.PI) / 0.3) + 1;
+}
+function easeOutBack(t) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+function drawText(progress, t) {
+  const fs = Math.round(54 * S);
+  const bx = logoCX + 160 * S;
+  const by = logoCY + 8 * S;
+  const tenchi = 'Tenchi';
+  const charDelay = 0.065;
+  const charDuration = 0.22;
+
+  ctx.font = `300 ${fs}px 'Outfit',sans-serif`;
+
+  // ── Measure all character positions upfront ──
+  let charPositions = [];
+  let xAccum = 0;
+  for (let i = 0; i < tenchi.length; i++) {
+    const w = ctx.measureText(tenchi[i]).width;
+    charPositions.push({ x: bx + xAccum, w: w });
+    xAccum += w;
+  }
+  const tenchiTotalW = xAccum;
+
+  // ── Draw each "Tenchi" character ──
+  for (let i = 0; i < tenchi.length; i++) {
+    const rawP = (progress - i * charDelay) / charDuration;
+    const cp = Math.max(0, Math.min(1, rawP));
+    if (cp <= 0) continue;
+
+    // Phase 1: Blur-to-sharp + scale-down + slide-up + fade-in (0→0.6)
+    // Phase 2: Elastic settle bounce (0.6→1.0)
+    const revealP = Math.min(1, cp / 0.6);
+    const settleP = Math.max(0, (cp - 0.6) / 0.4);
+
+    const epReveal = easeOutCubic(revealP);
+    const epSettle = easeOutElastic(settleP);
+
+    // Opacity: fade in during reveal
+    const alpha = Math.min(1, epReveal * 1.3);
+
+    // Scale: starts at 1.35, settles to 1.0 with elastic bounce
+    const scaleBase = 1 + (1 - epReveal) * 0.35;
+    const scaleBounce = settleP > 0 ? 1 + (1 - epSettle) * 0.06 : scaleBase;
+    const finalScale = settleP > 0 ? scaleBounce : scaleBase;
+
+    // Y offset: slides up 20px → 0
+    const slideY = (1 - epReveal) * 20 * S;
+
+    // Blur: starts at 8px → 0 (using shadow trick since ctx.filter can be slow)
+    const blurAmount = (1 - epReveal) * 8 * S;
+
+    const cx_char = charPositions[i].x + charPositions[i].w / 2;
+    const cy_char = by;
+
+    ctx.save();
+    ctx.translate(cx_char, cy_char + slideY);
+    ctx.scale(finalScale, finalScale);
+    ctx.translate(-cx_char, -cy_char);
+
+    // Blur layer (ghost copies at offsets for fake blur)
+    if (blurAmount > 0.5) {
+      ctx.globalAlpha = alpha * 0.15;
+      ctx.fillStyle = '#e4eaf0';
+      const offsets = [[-1,-1],[1,-1],[-1,1],[1,1],[0,-1.4],[0,1.4],[-1.4,0],[1.4,0]];
+      offsets.forEach(([ox, oy]) => {
+        ctx.fillText(tenchi[i], charPositions[i].x + ox * blurAmount * 0.5, by + oy * blurAmount * 0.5);
+      });
+    }
+
+    // Glow behind letter during reveal
+    if (epReveal < 0.9) {
+      ctx.globalAlpha = alpha * 0.3 * (1 - epReveal);
+      ctx.fillStyle = '#00b8ff';
+      ctx.shadowColor = '#00b8ff';
+      ctx.shadowBlur = 20 * S;
+      ctx.fillText(tenchi[i], charPositions[i].x, by);
+      ctx.shadowBlur = 0;
+    }
+
+    // Main letter
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#e4eaf0';
+    ctx.shadowColor = 'rgba(255,255,255,0.15)';
+    ctx.shadowBlur = 2 * S;
+    ctx.fillText(tenchi[i], charPositions[i].x, by);
+
+    ctx.restore();
+
+    // Spawn sparkles when letter fully appears
+    if (cp > 0.55 && !letterSparklesSpawned.has(i)) {
+      letterSparklesSpawned.add(i);
+      const sx = charPositions[i].x + charPositions[i].w / 2;
+      const sy = by - fs * 0.3;
+      for (let j = 0; j < 6; j++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = Math.random() * 1.5 + 0.5;
+        particles.push(new Particle(sx, sy, '#e4eaf0', {
+          vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd - 0.5,
+          size: Math.random() * 1.2 + 0.4, decay: 0.025
+        }));
+      }
+    }
+  }
+
+  // ══ "One" — dramatic entrance ══
+  const oneDelay = 0.5;
+  const oneDuration = 0.4;
+  const oneRawP = (progress - oneDelay) / oneDuration;
+  const oneP = Math.max(0, Math.min(1, oneRawP));
+
+  if (oneP > 0) {
+    ctx.font = `600 ${fs}px 'Outfit',sans-serif`;
+    const oneX = bx + tenchiTotalW + 8 * S;
+    const oneW = ctx.measureText('One').width;
+    const oneCX = oneX + oneW / 2;
+
+    // Phase 1: Slam in from right with scale (0→0.5)
+    // Phase 2: Elastic settle + glow burst (0.5→1.0)
+    const slamP = Math.min(1, oneP / 0.5);
+    const settleOP = Math.max(0, (oneP - 0.5) / 0.5);
+
+    const epSlam = easeOutExpo(slamP);
+    const epSettle = easeOutBack(settleOP);
+
+    // Slide from right: starts 60px right → 0
+    const slideX = (1 - epSlam) * 60 * S;
+    // Scale: starts at 1.5 → 1.0 with overshoot
+    const scaleSlam = 1 + (1 - epSlam) * 0.5;
+    const scaleFinal = settleOP > 0 ? 1 + (1 - epSettle) * 0.04 : scaleSlam;
+    // Alpha
+    const oneAlpha = Math.min(1, epSlam * 1.5);
+    // Glow intensity: peaks at slam contact, then settles
+    const glowIntensity = slamP < 1 ? epSlam * 2 : 1 + (1 - settleOP) * 1.5;
+
+    ctx.save();
+    ctx.translate(oneCX + slideX, by);
+    ctx.scale(scaleFinal, scaleFinal);
+    ctx.translate(-oneCX, -by);
+
+    // Heavy glow bloom during slam
+    if (glowIntensity > 1) {
+      ctx.globalAlpha = oneAlpha * 0.2 * (glowIntensity - 1);
+      ctx.fillStyle = '#00b8ff';
+      ctx.shadowColor = '#00b8ff';
+      ctx.shadowBlur = 50 * S;
+      ctx.fillText('One', oneX + slideX, by);
+      ctx.shadowBlur = 35 * S;
+      ctx.fillText('One', oneX + slideX, by);
+    }
+
+    // Main "One" with blue glow
+    const continuousGlow = 0.4 + 0.2 * Math.sin(t * 0.003);
+    ctx.globalAlpha = oneAlpha;
+    ctx.shadowColor = 'rgba(0,184,255,0.75)';
+    ctx.shadowBlur = (12 + continuousGlow * 14) * S;
+    ctx.fillStyle = '#00b8ff';
+    ctx.fillText('One', oneX + slideX, by);
+
+    // Bright highlight layer
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#50e0ff';
+    ctx.globalAlpha = oneAlpha * 0.3;
+    ctx.fillText('One', oneX + slideX, by);
+
+    ctx.restore();
+
+    // Energy burst when One slams in
+    if (slamP > 0.85 && !oneBurstSpawned) {
+      oneBurstSpawned = true;
+      const bx2 = oneX + oneW / 2;
+      const by2 = by - fs * 0.3;
+      spawnRing(bx2, by2, '#00b8ff');
+      spawnBurst(bx2, by2, '#00d8ff', 14);
+      spawnBurst(bx2, by2, '#ffffff', 8);
+    }
+  }
+
+  // ══ Light sweep / shine across full text ══
+  const sweepStart = 0.82;
+  const sweepP = Math.max(0, (progress - sweepStart) / 0.18);
+  // Also add continuous sweep every 5 seconds after initial
+  const elapsed = t;
+  const continuousSweepCycle = 5000;
+  const continuousSweepP = elapsed > 4000 ? ((elapsed - 4000) % continuousSweepCycle) / 800 : -1;
+  const activeSweep = sweepP > 0 && sweepP < 1 ? sweepP : (continuousSweepP >= 0 && continuousSweepP < 1 ? continuousSweepP : -1);
+
+  if (activeSweep >= 0) {
+    const totalTextW = tenchiTotalW + 8 * S + (oneP > 0 ? ctx.measureText('One').width : 0);
+    const sweepX = bx - 40 * S + (totalTextW + 80 * S) * easeInOutCubic(activeSweep);
+    const sweepW = 35 * S;
+
+    ctx.save();
+    // Create a vertical gradient band that moves horizontally
+    const sg = ctx.createLinearGradient(sweepX - sweepW, 0, sweepX + sweepW, 0);
+    sg.addColorStop(0, 'rgba(255,255,255,0)');
+    sg.addColorStop(0.3, 'rgba(255,255,255,0.08)');
+    sg.addColorStop(0.5, 'rgba(200,230,255,0.18)');
+    sg.addColorStop(0.7, 'rgba(255,255,255,0.08)');
+    sg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sg;
+    ctx.globalAlpha = 1;
+    ctx.fillRect(bx - 10 * S, by - fs * 1.1, totalTextW + 20 * S, fs * 1.5);
+
+    // Hot white line at sweep center
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1 * S;
+    ctx.beginPath();
+    ctx.moveTo(sweepX, by - fs * 1.1);
+    ctx.lineTo(sweepX, by + fs * 0.35);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawUnderline(progress) {
+  if (progress <= 0) return;
+  const ep = easeOutCubic(progress);
+  const x0 = logoCX + 160 * S;
+  const y0 = logoCY + 22 * S;
+  const len = 320 * S * ep;
+
+  // Main underline
+  const g = ctx.createLinearGradient(x0, 0, x0 + len, 0);
+  g.addColorStop(0, 'rgba(0,184,255,0.5)');
+  g.addColorStop(0.4, 'rgba(0,184,255,0.2)');
+  g.addColorStop(0.7, 'rgba(0,184,255,0.06)');
+  g.addColorStop(1, 'rgba(0,184,255,0)');
+  ctx.save();
+  ctx.strokeStyle = g;
+  ctx.lineWidth = 1.2 * S;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + len, y0); ctx.stroke();
+
+  // Glowing leading tip
+  if (ep < 0.95) {
+    const tipX = x0 + len;
+    ctx.fillStyle = '#00d8ff';
+    ctx.shadowColor = '#00d8ff';
+    ctx.shadowBlur = 12 * S;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(tipX, y0, 2 * S, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ══════════════════════════════════
+// EMIT AMBIENT PARTICLES
+// ══════════════════════════════════
+function emitAmbient() {
+  if(Math.random()>0.35){
+    const t=Math.random(); const p=loopPt(blueMain,t);
+    particles.push(new Particle(logoCX+p.x*S,logoCY+p.y*S,'#00d8ff',{
+      vx:(Math.random()-0.5)*0.6,vy:(Math.random()-0.5)*0.6,size:Math.random()*1.4+0.3,decay:0.011
+    }));
+  }
+  if(Math.random()>0.35){
+    const t=Math.random(); const p=loopPt(goldMain,t);
+    particles.push(new Particle(logoCX+p.x*S,logoCY+p.y*S,'#f0b840',{
+      vx:(Math.random()-0.5)*0.6,vy:(Math.random()-0.5)*0.6,size:Math.random()*1.4+0.3,decay:0.011
+    }));
+  }
+  if(Math.random()>0.75){
+    particles.push(new Particle(logoCX+(Math.random()-0.5)*15*S,logoCY+(Math.random()-0.5)*15*S,'#3ddc84',{
+      vx:(Math.random()-0.5)*0.8,vy:(Math.random()-0.5)*0.8,size:Math.random()+0.3,decay:0.014
+    }));
+  }
+}
+
+// ══════════════════════════════════
+// BREATHING
+// ══════════════════════════════════
+function drawBreathing(t) {
+  const b=0.025+0.018*Math.sin(t*0.0015);
+  ctx.save();ctx.globalAlpha=b;
+  ctx.strokeStyle='#00d8ff';ctx.lineWidth=5*S;ctx.shadowColor='#00d8ff';ctx.shadowBlur=28*S;
+  ctx.lineCap='round';ctx.lineJoin='round';
+  strokeLoopFull(blueMain,logoCX,logoCY,S);
+  ctx.strokeStyle='#f0b840';ctx.shadowColor='#f0b840';
+  strokeLoopFull(goldMain,logoCX,logoCY,S);
+  ctx.restore();
+}
+
+// ══════════════════════════════════
+// TIMELINE
+// ══════════════════════════════════
+let burstDone=false, orbsReady=false;
+
+function T(elapsed) {
+  return {
+    bg:         Math.min(1, elapsed/500),
+    blueMain:   Math.max(0, Math.min(1, (elapsed-400)/1300)),
+    blueOuter:  Math.max(0, Math.min(1, (elapsed-300)/1500)),
+    goldMain:   Math.max(0, Math.min(1, (elapsed-650)/1300)),
+    goldOuter:  Math.max(0, Math.min(1, (elapsed-550)/1500)),
+    goldR3:     Math.max(0, Math.min(1, (elapsed-750)/1200)),
+    goldR4:     Math.max(0, Math.min(1, (elapsed-800)/1200)),
+    cross:      Math.max(0, Math.min(1, (elapsed-1500)/700)),
+    dots:       Math.max(0, Math.min(1, (elapsed-1700)/1000)),
+    text:       Math.max(0, Math.min(1, (elapsed-2100)/1800)),
+    underline:  Math.max(0, Math.min(1, (elapsed-3400)/700)),
+    orbFade:    Math.max(0, Math.min(1, (elapsed-2800)/500)),
+    ambient:    elapsed > 2300,
+    breathing:  elapsed > 3300,
+  };
+}
+
+// ══════════════════════════════════
+// MAIN LOOP
+// ══════════════════════════════════
+function draw(timestamp) {
+  if(!startTime) startTime=timestamp;
+  const elapsed=timestamp-startTime;
+  const tl=T(elapsed);
+
+  ctx.clearRect(0,0,W,H);
+
+  ctx.globalAlpha=tl.bg;
+  drawBG(); drawStars(elapsed);
+  ctx.globalAlpha=1;
+
+  const af=Math.max(0,Math.min(1,(elapsed-1200)/1200));
+  if(af>0){ctx.globalAlpha=af;drawAmbientGlow(elapsed);ctx.globalAlpha=1;}
+
+  // ── BLUE RINGS ──
+  drawRing(blueOuter, tl.blueOuter, 'rgba(0,184,255,0.2)', 1.3, 'rgba(0,184,255,0.12)', 5);
+  drawRing(blueMain, tl.blueMain, '#00b8ff', 2.3, 'rgba(0,184,255,0.55)', 12);
+
+  // ── GOLD RINGS ──
+  drawRing(goldOuter, tl.goldOuter, 'rgba(212,148,26,0.2)', 1.3, 'rgba(240,184,64,0.12)', 5);
+  drawRing(goldMain, tl.goldMain, '#d4941a', 2.3, 'rgba(240,184,64,0.55)', 12);
+  drawRing(goldRing3, tl.goldR3, 'rgba(240,200,80,0.35)', 1, 'rgba(240,184,64,0.18)', 6);
+  drawRing(goldRing4, tl.goldR4, 'rgba(240,200,80,0.22)', 0.7, 'rgba(240,184,64,0.1)', 4);
+
+  // ── CROSSING ──
+  drawCrossing(tl.cross, elapsed);
+
+  // ── BURST ──
+  if(tl.cross>0.85 && !burstDone){
+    burstDone=true;
+    spawnRing(logoCX,logoCY,'#3ddc84');
+    spawnBurst(logoCX,logoCY,'#3ddc84',20);
+    spawnBurst(logoCX,logoCY,'#00d8ff',10);
+    spawnBurst(logoCX,logoCY,'#f0b840',10);
+  }
+
+  // ── GLOW DOTS ──
+  drawGlowDots(tl.dots, elapsed);
+
+  // ── ORBS ──
+  if(tl.orbFade>0){
+    if(!orbsReady){initOrbs();orbsReady=true;}
+    ctx.globalAlpha=easeOutCubic(tl.orbFade);
+    orbs.forEach(o=>{o.update(16);o.draw();});
+    ctx.globalAlpha=1;
+  }
+
+  // ── TEXT ──
+  if(tl.text>0) drawText(tl.text, elapsed);
+  if(tl.underline>0) drawUnderline(tl.underline);
+
+  // ── BREATHING ──
+  if(tl.breathing) drawBreathing(elapsed);
+
+  // ── AMBIENT PARTICLES ──
+  if(tl.ambient) emitAmbient();
+
+  // ── ENERGY RINGS ──
+  energyRings=energyRings.filter(r=>r.life>0);
+  energyRings.forEach(r=>{
+    r.r+=2.5*S;r.life-=0.022;
+    ctx.save();ctx.globalAlpha=r.life*0.4;
+    ctx.strokeStyle=r.color;ctx.lineWidth=2*S*r.life;
+    ctx.shadowColor=r.color;ctx.shadowBlur=18*S;
+    ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  });
+
+  // ── PARTICLES ──
+  particles=particles.filter(p=>p.life>0);
+  particles.forEach(p=>{p.update();p.draw();});
+
+  animFrame=requestAnimationFrame(draw);
+}
+
+function startAnimation(){
+  startTime=null;burstDone=false;orbsReady=false;
+  particles=[];energyRings=[];orbs=[];initStars();
+  letterSparklesSpawned=new Set();oneBurstSpawned=false;
+  animFrame=requestAnimationFrame(draw);
+}
+
+function restartAnimation(){
+  if(animFrame)cancelAnimationFrame(animFrame);
+  startAnimation();
+}
+
+startAnimation();
+</script>
+</body>
+</html>

@@ -1,135 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// In-memory storage for demo purposes
-// In production, this would be a database
-const storage = {
-  orders: [] as any[],
-  customers: [] as any[],
-};
+import { createBatch } from '@/lib/smart-order/store';
+import { parseExcelFile, getSampleDataForAI } from '@/lib/smart-order/excel-parser';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { orders, customers, type } = body;
-
-    // Handle Customer Master Data Upload
-    if (type === 'customers' && customers && Array.isArray(customers)) {
-      console.log(`Processing ${customers.length} customers for upload`);
-      
-      // Add to storage
-      customers.forEach((customer: any) => {
-        const existingIndex = storage.customers.findIndex(c => c.customerId === customer.customerId);
-        if (existingIndex >= 0) {
-          storage.customers[existingIndex] = { ...storage.customers[existingIndex], ...customer };
-        } else {
-          storage.customers.push(customer);
-        }
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `Successfully processed ${customers.length} customers`,
-        saved: customers.length,
-        errors: [],
-        totalCustomers: storage.customers.length,
-      });
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+    
+    if (!file) {
+      return NextResponse.json(
+        { error: 'No file provided' },
+        { status: 400 }
+      );
     }
-
-    // Handle Orders Upload
-    if (orders && Array.isArray(orders) && orders.length > 0) {
-      console.log(`Processing ${orders.length} orders for upload`);
-      
-      // Add to storage
-      orders.forEach((order: any) => {
-        const existingIndex = storage.orders.findIndex(o => o.orderId === order.orderId);
-        if (existingIndex >= 0) {
-          storage.orders[existingIndex] = { ...storage.orders[existingIndex], ...order };
-        } else {
-          storage.orders.push(order);
-        }
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `Successfully processed ${orders.length} orders`,
-        saved: orders.length,
-        errors: [],
-        totalOrders: storage.orders.length,
-      });
+    
+    // Validate file type
+    const allowedTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+    
+    if (!allowedTypes.includes(file.type) && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
+      return NextResponse.json(
+        { error: 'Invalid file type. Only .xlsx, .xls, .csv files are allowed' },
+        { status: 400 }
+      );
     }
-
-    return NextResponse.json(
-      { success: false, message: 'No data provided' },
-      { status: 400 }
-    );
-
+    
+    // Parse the Excel file with intelligent detection
+    const parsed = await parseExcelFile(file);
+    
+    if (parsed.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'No valid data rows found in the file' },
+        { status: 400 }
+      );
+    }
+    
+    // Get sample data for AI mapping
+    const { headers, sampleRow } = getSampleDataForAI(parsed);
+    
+    return NextResponse.json({
+      success: true,
+      batchName: file.name.replace(/\.[^/.]+$/, ''),
+      fileName: file.name,
+      headers,
+      previewRows: parsed.rows.slice(0, 10),
+      allRows: parsed.rows,
+      totalRows: parsed.totalRows,
+      sampleData: sampleRow,
+      detectedFormat: parsed.detectedFormat,
+      sheetName: parsed.sheetName,
+      headerRowIndex: parsed.headerRowIndex,
+      dataStartRowIndex: parsed.dataStartRowIndex
+    });
+    
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Failed to process upload' },
+      { 
+        error: error instanceof Error ? error.message : 'Failed to process file',
+        details: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
 }
 
-// GET endpoint to retrieve stored data
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
-
-    if (type === 'customers') {
-      return NextResponse.json({
-        success: true,
-        customers: storage.customers,
-      });
-    }
-
-    if (type === 'orders') {
-      return NextResponse.json({
-        success: true,
-        orders: storage.orders,
-      });
-    }
-
+    
+    // Return empty data structure
     return NextResponse.json({
       success: true,
-      orders: storage.orders,
-      customers: storage.customers,
+      orders: [],
+      customers: [],
+      smartOrderBatches: []
     });
   } catch (error) {
-    console.error('GET error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to retrieve data' },
-      { status: 500 }
-    );
+    console.error('upload GET error', error);
+    return NextResponse.json({ error: 'Failed to retrieve data' }, { status: 500 });
   }
 }
 
-// DELETE endpoint to clear data
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type');
-
-    if (type === 'customers') {
-      storage.customers = [];
-    } else if (type === 'orders') {
-      storage.orders = [];
-    } else {
-      storage.customers = [];
-      storage.orders = [];
-    }
-
     return NextResponse.json({
       success: true,
-      message: 'Data cleared successfully',
+      message: 'Data cleared successfully'
     });
   } catch (error) {
-    console.error('DELETE error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to clear data' },
-      { status: 500 }
-    );
+    console.error('upload DELETE error', error);
+    return NextResponse.json({ error: 'Failed to clear data' }, { status: 500 });
   }
 }

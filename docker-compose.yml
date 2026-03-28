@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   app:
@@ -8,12 +8,20 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-    env_file:
-      - .env.local
+      NODE_ENV: production
+      DATABASE_URL: postgresql://user:pass@db:5432/smartorder
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      REDIS_URL: redis://redis:6379
+      SAP_SERVICE_URL: http://sap-service:8000
+      SAP_MOCK: ${SAP_MOCK:-true}
+      SMARTORDER_STORAGE: ${SMARTORDER_STORAGE:-auto}
+      UPLOAD_DIR: ./uploads
+    depends_on:
+      - db
+      - redis
+      - sap-service
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
@@ -24,7 +32,35 @@ services:
     networks:
       - tenchi-network
 
-  # Optional: Redis for caching/sessions
+  sap-service:
+    build: ./sap-service
+    ports:
+      - "8000:8000"
+    environment:
+      SAP_MOCK: ${SAP_MOCK:-true}
+      SAP_HOST: ${SAP_HOST:-}
+      SAP_SYSNR: ${SAP_SYSNR:-00}
+      SAP_CLIENT: ${SAP_CLIENT:-100}
+      SAP_USER: ${SAP_USER:-}
+      SAP_PASSWORD: ${SAP_PASSWORD:-}
+    restart: unless-stopped
+    networks:
+      - tenchi-network
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: smartorder
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - tenchi-network
+
   redis:
     image: redis:7-alpine
     ports:
@@ -34,29 +70,10 @@ services:
     restart: unless-stopped
     networks:
       - tenchi-network
-    profiles:
-      - with-redis
-
-  # Optional: PostgreSQL for database
-  postgres:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=tenchi
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-tenchi_password}
-      - POSTGRES_DB=tenchi_sop
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - tenchi-network
-    profiles:
-      - with-db
 
 volumes:
+  pgdata:
   redis-data:
-  postgres-data:
 
 networks:
   tenchi-network:

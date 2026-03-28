@@ -326,6 +326,15 @@ export default function ReportsPage() {
     setGenerating(null);
   };
 
+  // Focus email input when modal opens
+  React.useEffect(() => {
+    if (showEmailModal && emailInputRef.current) {
+      setTimeout(() => {
+        emailInputRef.current?.focus();
+      }, 100);
+    }
+  }, [showEmailModal]);
+
   // Send Email
   const sendEmail = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -625,7 +634,7 @@ export default function ReportsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-            onClick={(e) => {
+            onMouseDown={(e) => {
               if (e.target === e.currentTarget) setShowEmailModal(false);
             }}
           >
@@ -634,7 +643,7 @@ export default function ReportsPage() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
             >
               {/* Modal Header */}
               <div className="p-6 bg-gradient-to-r from-indigo-500 to-purple-600">

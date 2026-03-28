@@ -1,528 +1,371 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Package, 
-  Calculator, 
-  TrendingDown, 
-  DollarSign, 
-  Truck,
-  AlertCircle,
-  CheckCircle2,
-  Info,
-  Download
+  Calculator, TrendingUp, Package, DollarSign, 
+  AlertCircle, CheckCircle2, ArrowRight, Download,
+  Settings, Sparkles, BarChart3, Target, Zap
 } from 'lucide-react';
-import { useData } from '@/lib/DataContext';
-import {
-  calculateEOQ,
-  calculateReorderPoint,
-  calculateReplenishment,
-  calculateClosingStock,
-  calculateStatisticalSafetyStock
-} from '@/lib/forecasting';
 import { MATERIALS, HISTORICAL_DATA } from '@/lib/mock-data';
+import { 
+  calculateReplenishment, 
+  calculateStockCoverageMonths,
+  calculateAvgMonthlySales,
+  calculateClosingStock,
+  type ForecastResult 
+} from '@/lib/forecasting';
 
-interface OptimizerResult {
-  materialId: string;
-  materialName: string;
-  category: string;
-  priceUSD: number;
-  currentStock: number;
-  avgMonthlySales: number;
-  safetyStock: number;
-  leadTimeDays: number;
-  orderingCost: number;
-  holdingCostPct: number;
-  // Calculated values
-  eoq: number;
-  reorderPoint: number;
-  orderPrompt: number;
-  orderPromptValue: number;
-  stockCoverage: number;
-  annualDemand: number;
-  holdingCostPerUnit: number;
-}
+// Calculate order prompts for all materials
+const calculateOrderPrompts = () => {
+  return MATERIALS.map(mat => {
+    const history = HISTORICAL_DATA[mat.id] || [];
+    const latest = history[history.length - 1] || {
+      openingStock: 1000,
+      stockInTransit: 200,
+      actualSales: 500,
+      forecast: 550,
+      safetyStock: 300
+    };
+    
+    const closingStock = calculateClosingStock(latest.openingStock, latest.stockInTransit, latest.actualSales);
+    const avgMonthlySales = calculateAvgMonthlySales(history.map((h: any) => h.actualSales).filter((s: number) => s > 0));
+    const coverageMonths = calculateStockCoverageMonths(closingStock, avgMonthlySales);
+    
+    // Calculate order prompt (replenishment)
+    const orderPromptQty = calculateReplenishment(latest.forecast, latest.safetyStock, closingStock);
+    const orderPromptValue = orderPromptQty * mat.priceUSD;
+    
+    // Determine priority
+    let priority: 'high' | 'medium' | 'low' = 'low';
+    if (coverageMonths < 1) priority = 'high';
+    else if (coverageMonths < 2) priority = 'medium';
+    
+    return {
+      sku: mat.id,
+      name: mat.description,
+      category: mat.category,
+      currentStock: closingStock,
+      safetyStock: latest.safetyStock,
+      avgMonthlySales,
+      coverageMonths,
+      orderPromptQty,
+      orderPromptValue,
+      unitPrice: mat.priceUSD,
+      priority,
+      inTransit: latest.stockInTransit
+    };
+  }).filter(item => item.orderPromptQty > 0) // Only show items needing replenishment
+    .sort((a, b) => b.orderPromptValue - a.orderPromptValue);
+};
+
+const KPICard = ({ title, value, subtitle, icon: Icon, color }: any) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    whileHover={{ y: -2 }}
+    className="bg-white dark:bg-slate-800/60 rounded-2xl border border-gray-200/50 dark:border-slate-700/50 p-5 shadow-sm"
+  >
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="text-sm text-gray-500 dark:text-slate-400">{title}</p>
+        <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{value}</p>
+        {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
+      </div>
+      <div className={`p-3 rounded-xl ${color}`}>
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+    </div>
+  </motion.div>
+);
 
 export default function OrderOptimizerPage() {
-  const { materials, historicalData } = useData();
-  const [serviceLevel, setServiceLevel] = useState<number>(95);
+  const [safetyStockMultiplier, setSafetyStockMultiplier] = useState(1.0);
+  const [showSettings, setShowSettings] = useState(false);
+  
+  const orderPrompts = useMemo(() => calculateOrderPrompts(), []);
+  
+  // Calculate totals
+  const totals = useMemo(() => {
+    const totalQty = orderPrompts.reduce((sum, item) => sum + item.orderPromptQty, 0);
+    const totalValue = orderPrompts.reduce((sum, item) => sum + item.orderPromptValue, 0);
+    const highPriority = orderPrompts.filter(item => item.priority === 'high').length;
+    const mediumPriority = orderPrompts.filter(item => item.priority === 'medium').length;
+    
+    return { totalQty, totalValue, highPriority, mediumPriority };
+  }, [orderPrompts]);
 
-  // Calculate optimizer results for all materials
-  const optimizerResults: OptimizerResult[] = useMemo(() => {
-    const slFraction = serviceLevel / 100; // Convert 90→0.90, 95→0.95, etc.
-
-    return MATERIALS.map(mat => {
-      const matHistory = historicalData[mat.id] || HISTORICAL_DATA[mat.id] || [];
-      const latest = matHistory[matHistory.length - 1] || {
-        openingStock: 1000,
-        stockInTransit: 0,
-        actualSales: 0,
-        safetyStock: 200,
-        forecast: 1000
-      };
-
-      // Calculate current stock
-      const currentStock = calculateClosingStock(
-        latest.openingStock,
-        latest.stockInTransit,
-        latest.actualSales
-      );
-
-      // Calculate average monthly sales
-      const salesValues = matHistory
-        .filter((h: any) => h.actualSales > 0)
-        .map((h: any) => h.actualSales);
-
-      const avgMonthlySales = salesValues.length > 0
-        ? Math.round(salesValues.reduce((a: number, b: number) => a + b, 0) / salesValues.length)
-        : Math.round(latest.forecast * 0.8);
-
-      // Demand standard deviation (monthly)
-      const demandStdDev = salesValues.length > 1
-        ? Math.sqrt(
-            salesValues.reduce((sum: number, v: number) => sum + Math.pow(v - avgMonthlySales, 2), 0) / salesValues.length
-          )
-        : avgMonthlySales * 0.2; // fallback: 20% of avg
-
-      // Daily demand stats
-      const avgDailyDemand = avgMonthlySales / 30;
-      const dailyDemandStdDev = demandStdDev / 30;
-      const leadTimeDays = mat.leadTimeDays || 14;
-
-      // Statistical safety stock based on service level slider
-      const dynamicSafetyStock = Math.max(
-        calculateStatisticalSafetyStock(avgDailyDemand, dailyDemandStdDev, leadTimeDays, slFraction),
-        latest.safetyStock // never go below the data-driven safety stock
-      );
-
-      // Annual demand
-      const annualDemand = avgMonthlySales * 12;
-
-      // Holding cost per unit per year
-      const holdingCostPerUnit = mat.priceUSD * (mat.holdingCostPct || 0.20);
-
-      // Calculate EOQ
-      const eoq = calculateEOQ(annualDemand, mat.orderingCost || 50, holdingCostPerUnit);
-
-      // Calculate reorder point using dynamic safety stock
-      const reorderPoint = calculateReorderPoint(avgDailyDemand, leadTimeDays, dynamicSafetyStock);
-
-      // Calculate Order Prompt using dynamic safety stock
-      const orderPrompt = calculateReplenishment(latest.forecast, dynamicSafetyStock, currentStock);
-
-      // Stock coverage in months
-      const stockCoverage = avgMonthlySales > 0 ? currentStock / avgMonthlySales : 0;
-
-      return {
-        materialId: mat.id,
-        materialName: mat.description,
-        category: mat.category || 'Uncategorized',
-        priceUSD: mat.priceUSD,
-        currentStock,
-        avgMonthlySales,
-        safetyStock: dynamicSafetyStock,
-        leadTimeDays,
-        orderingCost: mat.orderingCost || 50,
-        holdingCostPct: mat.holdingCostPct || 0.20,
-        eoq,
-        reorderPoint,
-        orderPrompt,
-        orderPromptValue: orderPrompt * mat.priceUSD,
-        stockCoverage,
-        annualDemand,
-        holdingCostPerUnit,
-      };
+  // Group by category
+  const byCategory = useMemo(() => {
+    const grouped: Record<string, { qty: number; value: number; items: number }> = {};
+    orderPrompts.forEach(item => {
+      if (!grouped[item.category]) {
+        grouped[item.category] = { qty: 0, value: 0, items: 0 };
+      }
+      grouped[item.category].qty += item.orderPromptQty;
+      grouped[item.category].value += item.orderPromptValue;
+      grouped[item.category].items++;
     });
-  }, [materials, historicalData, serviceLevel]);
+    return grouped;
+  }, [orderPrompts]);
 
-  // Calculate summary statistics
-  const summary = useMemo(() => {
-    const totalOrderPrompt = optimizerResults.reduce((sum, r) => sum + r.orderPrompt, 0);
-    const totalOrderPromptValue = optimizerResults.reduce((sum, r) => sum + r.orderPromptValue, 0);
-    const lowStockItems = optimizerResults.filter(r => r.stockCoverage < 1).length;
-    const optimalItems = optimizerResults.filter(r => r.stockCoverage >= 1 && r.stockCoverage <= 3).length;
-
-    return {
-      totalOrderPrompt,
-      totalOrderPromptValue,
-      lowStockItems,
-      optimalItems,
-    };
-  }, [optimizerResults]);
-
-  const handleExport = async () => {
-    const XLSX = await import('xlsx');
-    const wb = XLSX.utils.book_new();
-    const rows = optimizerResults.map(r => ({
-      'SKU ID': r.materialId,
-      'Description': r.materialName,
-      'Category': r.category,
-      'Price (USD)': r.priceUSD,
-      'Current Stock': r.currentStock,
-      'Avg Monthly Sales': r.avgMonthlySales,
-      'Safety Stock': r.safetyStock,
-      'EOQ (Units)': Math.round(r.eoq),
-      'Reorder Point': Math.round(r.reorderPoint),
-      'Order Prompt (Units)': r.orderPrompt,
-      'Order Prompt (Value $)': r.orderPromptValue.toFixed(2),
-      'Stock Coverage (Months)': r.stockCoverage.toFixed(2),
-      'Formula: Order Prompt': '= max(0, (Forecast + Safety Stock) - Closing Stock)',
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Order_Optimizer');
-    XLSX.writeFile(wb, 'Tenchi_Order_Optimizer.xlsx');
+  const handleExport = () => {
+    // Export to Excel/CSV
+    const csvContent = [
+      ['SKU', 'Description', 'Category', 'Current Stock', 'Safety Stock', 'Avg Monthly Sales', 'Coverage (Months)', 'Order Prompt (Units)', 'Unit Price', 'Order Prompt (Value)'].join(','),
+      ...orderPrompts.map(item => [
+        item.sku,
+        `"${item.name}"`,
+        item.category,
+        item.currentStock,
+        item.safetyStock,
+        item.avgMonthlySales,
+        item.coverageMonths.toFixed(2),
+        item.orderPromptQty,
+        item.unitPrice.toFixed(2),
+        item.orderPromptValue.toFixed(2)
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `order_prompts_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/20 to-emerald-50/20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-slate-800/50"
-      >
-        <div className="px-4 sm:px-6 py-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <motion.h1
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-3 text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-emerald-600 bg-clip-text text-transparent"
-              >
-                <div className="p-2 bg-gradient-to-br from-indigo-500 to-emerald-600 rounded-xl shadow-lg shadow-indigo-500/30">
-                  <Package className="h-6 w-6 text-white" />
-                </div>
-                Order Optimizer
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="mt-1.5 text-sm text-gray-500 dark:text-slate-400"
-              >
-                EOQ calculation and order prompt generation with safety stock
-              </motion.p>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10">
-                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300 whitespace-nowrap">Service Level:</span>
-                <input
-                  type="range"
-                  min={90}
-                  max={99}
-                  step={1}
-                  value={serviceLevel}
-                  onChange={(e) => setServiceLevel(Number(e.target.value))}
-                  className="w-24 accent-indigo-500"
-                />
-                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 w-10 tabular-nums">{serviceLevel}%</span>
-              </div>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleExport}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-emerald-600 hover:from-indigo-600 hover:to-emerald-700 px-4 py-2.5 text-sm font-medium text-white transition-all shadow-lg shadow-indigo-500/30"
-              >
-                <Download size={16} />
-                <span className="hidden sm:inline">Export</span>
-              </motion.button>
-            </div>
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+              Order Optimizer
+            </h1>
+            <p className="text-gray-500 dark:text-slate-400 mt-1">
+              AI-powered order prompt generation with safety stock optimization
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowSettings(!showSettings)}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </button>
+            <button 
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
           </div>
         </div>
       </motion.div>
 
-      <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {[
-            {
-              label: 'Total Order Prompt',
-              value: summary.totalOrderPrompt.toLocaleString(),
-              sub: 'units',
-              icon: Package,
-              bg: 'bg-indigo-50 dark:bg-indigo-500/10',
-              iconColor: 'text-indigo-600 dark:text-indigo-400',
-              badge: { text: 'Pending', color: 'text-indigo-600 dark:text-indigo-400' },
-              delay: 0,
-            },
-            {
-              label: 'Order Prompt Value',
-              value: `$${summary.totalOrderPromptValue >= 1000000
-                ? `${(summary.totalOrderPromptValue / 1000000).toFixed(1)}M`
-                : `${(summary.totalOrderPromptValue / 1000).toFixed(1)}k`}`,
-              sub: '',
-              icon: DollarSign,
-              bg: 'bg-emerald-50 dark:bg-emerald-500/10',
-              iconColor: 'text-emerald-600 dark:text-emerald-400',
-              badge: { text: 'Total', color: 'text-emerald-600 dark:text-emerald-400' },
-              delay: 0.05,
-            },
-            {
-              label: 'Low Stock Items',
-              value: `${summary.lowStockItems}`,
-              sub: summary.lowStockItems > 0 ? 'need action' : 'all good',
-              icon: AlertCircle,
-              bg: summary.lowStockItems > 0 ? 'bg-red-50 dark:bg-red-500/10' : 'bg-emerald-50 dark:bg-emerald-500/10',
-              iconColor: summary.lowStockItems > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
-              badge: { text: summary.lowStockItems > 0 ? 'Alert' : 'OK', color: summary.lowStockItems > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400' },
-              delay: 0.1,
-            },
-            {
-              label: 'EOQ Optimized',
-              value: `${summary.optimalItems}`,
-              sub: 'optimal coverage',
-              icon: Calculator,
-              bg: 'bg-amber-50 dark:bg-amber-500/10',
-              iconColor: 'text-amber-600 dark:text-amber-400',
-              badge: { text: 'Balanced', color: 'text-amber-600 dark:text-amber-400' },
-              delay: 0.15,
-            },
-          ].map((kpi) => (
-            <motion.div
-              key={kpi.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: kpi.delay }}
-              whileHover={{ y: -2, scale: 1.01 }}
-              className="rounded-2xl border border-gray-200/50 dark:border-slate-700/50 bg-white dark:bg-slate-800/50 p-4 shadow-sm hover:shadow-md transition-all"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${kpi.bg}`}>
-                  <kpi.icon className={`h-5 w-5 ${kpi.iconColor}`} />
+      {/* Settings Panel */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-6 bg-white dark:bg-slate-800/60 rounded-2xl border border-gray-200/50 dark:border-slate-700/50 p-5"
+          >
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-indigo-500" />
+              Optimization Parameters
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm text-gray-500 mb-1 block">Safety Stock Multiplier</label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2"
+                  step="0.1"
+                  value={safetyStockMultiplier}
+                  onChange={(e) => setSafetyStockMultiplier(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>0.5x</span>
+                  <span className="font-medium text-indigo-600">{safetyStockMultiplier}x</span>
+                  <span>2.0x</span>
                 </div>
-                <span className={`text-xs font-medium ${kpi.badge.color}`}>{kpi.badge.text}</span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-slate-400 mb-1">{kpi.label}</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {kpi.value} {kpi.sub && <span className="text-xs font-normal text-gray-400">{kpi.sub}</span>}
-              </p>
-            </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <KPICard 
+          title="Total Order Prompt" 
+          value={totals.totalQty.toLocaleString()} 
+          subtitle="Units to order"
+          icon={Package} 
+          color="bg-blue-500" 
+        />
+        <KPICard 
+          title="Total Value" 
+          value={`$${(totals.totalValue / 1000).toFixed(1)}k`} 
+          subtitle="Order value"
+          icon={DollarSign} 
+          color="bg-emerald-500" 
+        />
+        <KPICard 
+          title="High Priority" 
+          value={totals.highPriority} 
+          subtitle="Coverage < 1 month"
+          icon={AlertCircle} 
+          color="bg-rose-500" 
+        />
+        <KPICard 
+          title="Medium Priority" 
+          value={totals.mediumPriority} 
+          subtitle="Coverage 1-2 months"
+          icon={Target} 
+          color="bg-amber-500" 
+        />
+      </div>
+
+      {/* Summary by Category */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white dark:bg-slate-800/60 rounded-2xl border border-gray-200/50 dark:border-slate-700/50 p-6 shadow-sm mb-6"
+      >
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-violet-500" />
+          Order Prompt by Category
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Object.entries(byCategory).map(([category, data]) => (
+            <div key={category} className="p-4 bg-gray-50 dark:bg-slate-900/50 rounded-xl">
+              <p className="text-sm text-gray-500">{category}</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{data.qty.toLocaleString()} units</p>
+              <p className="text-sm text-emerald-600">${data.value.toLocaleString()}</p>
+              <p className="text-xs text-gray-400 mt-1">{data.items} SKUs</p>
+            </div>
           ))}
         </div>
+      </motion.div>
 
-        {/* Formula Explanation */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 sm:p-6"
-        >
-          <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <Info className="h-5 w-5 text-indigo-500" />
-            Calculation Formulas
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-900/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Calculator className="h-4 w-4 text-indigo-500" />
-                <span className="font-medium text-gray-900 dark:text-white">EOQ</span>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-slate-400 mb-2">
-                Economic Order Quantity minimizes total inventory costs
-              </p>
-              <code className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">
-                √(2 × Annual Demand × Order Cost / Holding Cost)
-              </code>
-            </div>
-            <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-900/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Truck className="h-4 w-4 text-emerald-500" />
-                <span className="font-medium text-gray-900 dark:text-white">Reorder Point</span>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-slate-400 mb-2">
-                Stock level that triggers a new order
-              </p>
-              <code className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">
-                (Avg Daily Demand × Lead Time) + Safety Stock
-              </code>
-            </div>
-            <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-900/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Package className="h-4 w-4 text-amber-500" />
-                <span className="font-medium text-gray-900 dark:text-white">Order Prompt</span>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-slate-400 mb-2">
-                Recommended quantity to order (considers safety stock)
-              </p>
-              <code className="text-xs bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">
-                Max(0, (Forecast + Safety Stock) - Current Stock)
-              </code>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Order Prompt Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 overflow-hidden"
-        >
-          <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-slate-700">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-                Order Prompt Recommendations
-              </h3>
-              <span className="text-xs text-gray-500 dark:text-slate-400">
-                Based on forecast + safety stock requirements
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-slate-900/50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400">SKU ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400">Description</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400">Category</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Current Stock</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Safety Stock</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">EOQ</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Reorder Point</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Coverage (Mo)</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Order Prompt (Units)</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-slate-400">Order Prompt (Value)</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-slate-400">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {optimizerResults.map((item, i) => (
-                  <motion.tr
-                    key={item.materialId}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.03 * i }}
-                    className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-slate-400">{item.materialId}</td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{item.materialName}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{item.category}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">
-                      {item.currentStock.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">
-                      {item.safetyStock.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">
-                      {item.eoq.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">
-                      {Math.round(item.reorderPoint).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`font-medium ${
-                        item.stockCoverage < 1 ? 'text-red-600 dark:text-red-400' :
-                        item.stockCoverage < 2 ? 'text-amber-600 dark:text-amber-400' :
-                        'text-emerald-600 dark:text-emerald-400'
-                      }`}>
-                        {item.stockCoverage.toFixed(1)} mo
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {item.orderPrompt > 0 ? (
-                        <span className="font-medium text-indigo-600 dark:text-indigo-400">
-                          {item.orderPrompt.toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {item.orderPromptValue > 0 ? (
-                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                          ${item.orderPromptValue.toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {item.stockCoverage < 1 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/20 text-xs font-medium text-red-700 dark:text-red-400">
-                          <AlertCircle size={12} />
-                          Order Now
-                        </span>
-                      ) : item.orderPrompt > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-500/20 text-xs font-medium text-amber-700 dark:text-amber-400">
-                          <Package size={12} />
-                          Replenish
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                          <CheckCircle2 size={12} />
-                          Optimal
-                        </span>
-                      )}
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/10 p-4 sm:p-6"
-          >
-            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-indigo-500" />
-              Cost Optimization
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
-              EOQ helps minimize total inventory costs by balancing ordering costs against holding costs.
-              Using the optimal order quantity can reduce costs by 15-25%.
-            </p>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-slate-400">Average Order Cost</span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  ${Math.round(optimizerResults.reduce((sum, r) => sum + r.orderingCost, 0) / optimizerResults.length)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-slate-400">Average Holding Cost</span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {Math.round(optimizerResults.reduce((sum, r) => sum + r.holdingCostPct, 0) / optimizerResults.length * 100)}%
-                </span>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 p-4 sm:p-6"
-          >
-            <h4 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-              Safety Stock Protection
-            </h4>
-            <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
-              Safety stock protects against stockouts during lead time. Order prompt includes safety 
-              stock requirements to maintain service level targets.
-            </p>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-slate-400">Service Level Target</span>
-                <span className="font-medium text-gray-900 dark:text-white">{serviceLevel}%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-slate-400">Avg Lead Time</span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {Math.round(optimizerResults.reduce((sum, r) => sum + r.leadTimeDays, 0) / optimizerResults.length)} days
-                </span>
-              </div>
-            </div>
-          </motion.div>
+      {/* Order Prompt Table */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white dark:bg-slate-800/60 rounded-2xl border border-gray-200/50 dark:border-slate-700/50 shadow-sm overflow-hidden"
+      >
+        <div className="p-4 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-500" />
+            Order Prompt Details
+          </h2>
+          <span className="text-sm text-gray-500">
+            Formula: Order Prompt = (Forecast + Safety Stock) - Current Stock
+          </span>
         </div>
-      </div>
+        
+        {/* Total Row */}
+        <div className="bg-indigo-50/50 dark:bg-indigo-500/10 border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-3">
+          <div className="grid grid-cols-12 gap-4 text-sm">
+            <div className="col-span-3 font-semibold text-indigo-700 dark:text-indigo-400">TOTAL</div>
+            <div className="col-span-2 text-right font-bold text-gray-900 dark:text-white">{totals.totalQty.toLocaleString()} units</div>
+            <div className="col-span-3"></div>
+            <div className="col-span-2 text-right font-bold text-emerald-600">${totals.totalValue.toLocaleString()}</div>
+            <div className="col-span-2"></div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-slate-900/50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">SKU</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Description</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Category</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Current Stock</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Safety Stock</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Coverage</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Order Prompt (Units)</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Order Prompt (Value)</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500">Priority</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orderPrompts.map((item, idx) => (
+                <tr key={item.sku} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-slate-400">{item.sku}</td>
+                  <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{item.name}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{item.category}</td>
+                  <td className="px-4 py-3 text-right text-gray-900 dark:text-white">{item.currentStock.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-400">{item.safetyStock.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`font-medium ${
+                      item.coverageMonths < 1 ? 'text-rose-600' : 
+                      item.coverageMonths < 2 ? 'text-amber-600' : 
+                      'text-emerald-600'
+                    }`}>
+                      {item.coverageMonths.toFixed(1)} mo
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-indigo-600 dark:text-indigo-400">
+                    {item.orderPromptQty.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                    ${item.orderPromptValue.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                      item.priority === 'high' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                      item.priority === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
+                      'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+                    }`}>
+                      {item.priority === 'high' ? <AlertCircle className="w-3 h-3" /> :
+                       item.priority === 'medium' ? <Target className="w-3 h-3" /> :
+                       <CheckCircle2 className="w-3 h-3" />}
+                      {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+
+      {/* Formula Explanation */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="mt-6 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl p-4"
+      >
+        <h3 className="font-semibold text-emerald-900 dark:text-emerald-400 flex items-center gap-2">
+          <Sparkles className="w-5 h-5" />
+          Order Prompt Calculation Formula
+        </h3>
+        <div className="mt-3 space-y-2 text-sm text-emerald-800 dark:text-emerald-300">
+          <p><strong>Step 1:</strong> Closing Stock = Opening Stock + In Transit - Actual Sales</p>
+          <p><strong>Step 2:</strong> Stock Coverage = Closing Stock / Average Monthly Sales</p>
+          <p><strong>Step 3:</strong> Order Prompt = (Forecast Demand + Safety Stock) - Closing Stock</p>
+          <p><strong>Step 4:</strong> If Order Prompt ≤ 0, no replenishment needed</p>
+          <p className="mt-2 text-emerald-700 dark:text-emerald-400">
+            <strong>Note:</strong> Safety stock is considered in the calculation to ensure buffer inventory is maintained.
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }
+
+// Required for AnimatePresence
+import { AnimatePresence } from 'framer-motion';

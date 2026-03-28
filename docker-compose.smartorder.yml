@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/smartorder
+      - SAP_SERVICE_URL=http://sap-service:8000
+      - NEXTAUTH_SECRET=your-secret-key-change-in-production
+      - NEXTAUTH_URL=http://localhost:3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      - db
+      - sap-service
+    networks:
+      - smartorder-network
+
+  sap-service:
+    build: ./sap-service
+    ports:
+      - "8000:8000"
+    environment:
+      - SAP_MOCK=true
+      - SAP_HOST=${SAP_HOST}
+      - SAP_SYSNR=${SAP_SYSNR:-00}
+      - SAP_CLIENT=${SAP_CLIENT:-100}
+      - SAP_USER=${SAP_USER}
+      - SAP_PASSWORD=${SAP_PASSWORD}
+    networks:
+      - smartorder-network
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: smartorder
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - smartorder-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@tenchi.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - smartorder-network
+
+volumes:
+  pgdata:
+
+networks:
+  smartorder-network:
+    driver: bridge

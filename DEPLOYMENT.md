@@ -1,195 +1,124 @@
 # Tenchi S&OP Platform - Deployment Guide
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
 - Node.js 18+ 
-- npm 9+
-- Docker (optional)
+- npm or yarn
+- PostgreSQL (optional, falls back to file storage)
+- Clerk account for authentication
+- Google Gemini API key (optional, for AI features)
 
-### Local Development
+## Environment Variables
+
+Create a `.env.local` file with the following variables:
+
+```env
+# Required: Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+
+# Optional: Database (falls back to file storage if not provided)
+DATABASE_URL="postgresql://user:password@localhost:5432/tenchi?schema=public"
+SMARTORDER_STORAGE="auto"  # auto, file, or prisma
+
+# Optional: AI Features
+GEMINI_API_KEY="your-gemini-api-key"
+
+# Optional: SAP Integration
+SAP_SERVICE_URL="http://localhost:8000"
+SAP_MOCK="true"
+
+# Optional: Email
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_USER="your-email@gmail.com"
+SMTP_PASS="your-app-password"
+EMAIL_FROM="Tenchi S&OP <your-email@gmail.com>"
+```
+
+## Local Development
+
 ```bash
 # Install dependencies
 npm install
 
-# Create environment file
-cp .env.example .env.local
-
-# Start development server
+# Run development server
 npm run dev
+
+# Open http://localhost:3000
 ```
 
-### Production Build
+## Build for Production
+
 ```bash
-# Build for production
+# Create production build
 npm run build
 
 # Start production server
 npm start
 ```
 
-## Deployment Options
-
-### 1. Vercel (Recommended)
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel --prod
-```
-
-Or connect your GitHub repository to Vercel for automatic deployments.
-
-**Required Environment Variables in Vercel:**
-- `NEXTAUTH_URL` - Your production domain
-- `NEXTAUTH_SECRET` - Random 32+ character string
-- `GEMINI_API_KEY` - For AI features (optional)
-
-### 2. Docker Deployment
+## Docker Deployment
 
 ```bash
 # Build Docker image
-npm run docker:build
+docker build -t tenchi-sop .
 
 # Run container
-npm run docker:run
-
-# Or use docker-compose
-npm run docker:compose
-
-# With PostgreSQL and Redis
-npm run docker:compose:db
+docker run -p 3000:3000 --env-file .env.local tenchi-sop
 ```
 
-### 3. AWS Deployment
+## Vercel Deployment
 
-#### Using ECS/Fargate
-```bash
-# Build and push to ECR
-aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-docker build -t tenchi-sop .
-docker tag tenchi-sop:latest <account>.dkr.ecr.<region>.amazonaws.com/tenchi-sop:latest
-docker push <account>.dkr.ecr.<region>.amazonaws.com/tenchi-sop:latest
-```
+1. Push code to GitHub
+2. Import project in Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy
 
-### 4. Railway/Render/Fly.io
+## Testing Excel Upload
 
-Simply connect your GitHub repository and set the environment variables.
+The system supports these Excel formats:
 
-## Health Checks
+### 1. Pivot Table Format (Bisk Farm, Catch)
+- Headers with "Sum of Alt Qty", "Row Labels"
+- Monthly columns (Jan-2026, Feb-2026, etc.)
+- Product names in rows
 
-The application exposes a health check endpoint at:
-```
-GET /api/health
-```
+### 2. Stock Report Format (NILONS)
+- Columns: SUBGROUP, Product-1, Opening, Purchase, Primary, etc.
+- Product descriptions
+- Stock movement data
 
-Response:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "uptime": 3600,
-  "environment": "production",
-  "version": "1.0.0",
-  "responseTime": 12,
-  "checks": {
-    "memory": {
-      "status": "ok",
-      "heapUsed": "45MB",
-      "heapTotal": "60MB"
-    }
-  }
-}
-```
+### 3. Customer Sales Format (WeikField)
+- Customer-wise sales data
+- Monthly value columns
 
-## Environment Variables
+## Features
 
-See `.env.example` for all available options.
-
-### Required
-- `NEXTAUTH_URL` - Application URL
-- `NEXTAUTH_SECRET` - Secret key for encryption
-
-### Optional
-- `DATABASE_URL` - PostgreSQL connection string
-- `GEMINI_API_KEY` - For AI assistant features
-- `SMTP_*` - Email configuration
-- `UPSTASH_*` - Redis configuration
-
-## Performance Optimization
-
-### Build Output
-The application uses Next.js standalone output for optimized Docker images.
-
-### Code Splitting
-- Charts are dynamically imported
-- XLSX library is code-split
-- Vendor chunks are separated
-
-### Caching
-- Static assets cached for 1 year
-- API responses cached based on headers
-- localStorage for client-side data persistence
-
-## Monitoring
-
-### Health Endpoint
-Monitor `/api/health` for:
-- Application status
-- Memory usage
-- Response time
-
-### Error Tracking
-Configure Sentry by setting `SENTRY_DSN` environment variable.
-
-### Logging
-Set `LOG_LEVEL` environment variable:
-- `debug` - Development
-- `info` - Production default
-- `warn` - Warnings only
-- `error` - Errors only
+- **SmartOrder Engine**: Upload Excel/CSV and convert to SAP orders
+- **AI Column Mapping**: Automatic field detection using Gemini AI
+- **Master Data Validation**: Validate against customer/material masters
+- **SAP Integration**: Create sales orders in SAP S/4HANA
+- **Analytics Dashboard**: Track order processing metrics
+- **Multi-format Support**: Handles pivot tables, stock reports, and flat data
 
 ## Troubleshooting
 
 ### Build Errors
-```bash
-# Clear cache
-npm run clean
+- Ensure all environment variables are set
+- Run `npm install` to update dependencies
+- Clear `.next` folder and rebuild
 
-# Reinstall dependencies
-rm -rf node_modules package-lock.json
-npm install
-```
+### Excel Parsing Issues
+- Check file format is .xlsx, .xls, or .csv
+- Ensure data starts within first 10 rows
+- Verify column headers are present
 
-### Memory Issues
-For low-memory environments, limit Node.js heap:
-```bash
-NODE_OPTIONS="--max-old-space-size=4096" npm run build
-```
-
-### Database Connection Issues
-Ensure your database URL is correctly formatted and the database is accessible from your deployment environment.
-
-## Security
-
-### Security Headers
-The application includes:
-- CORS configuration
-- Content Security Policy
-- X-Frame-Options
-- HSTS (in production)
-
-### Authentication
-- JWT-based authentication
-- Secure session management
-- CSRF protection
+### SAP Connection Issues
+- Set `SAP_MOCK=true` for demo mode
+- Check `SAP_SERVICE_URL` is accessible
+- Verify network connectivity
 
 ## Support
 
-For deployment issues:
-1. Check the health endpoint
-2. Review application logs
-3. Verify environment variables
-4. Check the GitHub issues
+For issues and feature requests, please refer to the project documentation or contact the development team.
