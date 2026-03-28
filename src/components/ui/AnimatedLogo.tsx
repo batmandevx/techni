@@ -15,23 +15,20 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
     let logoCX: number, logoCY: number, S: number;
 
     function resize() {
-      if (!canvas || !ctx) return;
       dpr = window.devicePixelRatio || 1;
       W = window.innerWidth;
       H = window.innerHeight;
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas!.width = W * dpr;
+      canvas!.height = H * dpr;
+      canvas!.style.width = W + 'px';
+      canvas!.style.height = H + 'px';
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       S = Math.min(W / 1100, H / 600);
       logoCX = W / 2 - 100 * S;
       logoCY = H / 2;
     }
     resize();
-    window.addEventListener('resize', () => {
-      resize();
-    });
+    window.addEventListener('resize', resize);
 
     // Easing functions
     function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
@@ -93,16 +90,16 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       if (progress <= 0) return;
       const N = 180;
       const maxT = progress;
-      ctx.beginPath();
+      ctx!.beginPath();
       for (let i = 0; i <= N; i++) {
         const t = (i / N) * maxT;
         const p = loopPt(loop, t);
         const x = ox + p.x * sc;
         const y = oy + p.y * sc;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (i === 0) ctx!.moveTo(x, y);
+        else ctx!.lineTo(x, y);
       }
-      ctx.stroke();
+      ctx!.stroke();
     }
 
     function strokeLoopFull(loop: any, ox: number, oy: number, sc: number) {
@@ -112,15 +109,15 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
     // Drawing functions
     function drawRing(loop: any, progress: number, color: string, lineW: number, glowCol: string, glowSz: number) {
       if (progress <= 0) return;
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineW * S;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.shadowColor = glowCol;
-      ctx.shadowBlur = glowSz * S;
+      ctx!.save();
+      ctx!.strokeStyle = color;
+      ctx!.lineWidth = lineW * S;
+      ctx!.lineCap = 'round';
+      ctx!.lineJoin = 'round';
+      ctx!.shadowColor = glowCol;
+      ctx!.shadowBlur = glowSz * S;
       strokeLoopPartial(loop, easeInOutCubic(progress), logoCX, logoCY, S);
-      ctx.restore();
+      ctx!.restore();
     }
 
     function drawCrossing(progress: number) {
@@ -129,29 +126,29 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       const hw = 45 * S * ep;
       const hh = 36 * S * ep;
 
-      const grad = ctx.createLinearGradient(logoCX - hw, logoCY, logoCX + hw, logoCY);
+      const grad = ctx!.createLinearGradient(logoCX - hw, logoCY, logoCX + hw, logoCY);
       grad.addColorStop(0, 'rgba(0,200,255,0.45)');
       grad.addColorStop(0.42, 'rgba(61,220,132,0.95)');
       grad.addColorStop(0.58, 'rgba(61,220,132,0.95)');
       grad.addColorStop(1, 'rgba(240,184,64,0.45)');
 
-      ctx.save();
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 1.8 * S;
-      ctx.lineCap = 'round';
-      ctx.shadowColor = 'rgba(61,220,132,0.55)';
-      ctx.shadowBlur = 10 * S;
+      ctx!.save();
+      ctx!.strokeStyle = grad;
+      ctx!.lineWidth = 1.8 * S;
+      ctx!.lineCap = 'round';
+      ctx!.shadowColor = 'rgba(61,220,132,0.55)';
+      ctx!.shadowBlur = 10 * S;
 
-      ctx.beginPath();
-      ctx.moveTo(logoCX - hw, logoCY - hh);
-      ctx.lineTo(logoCX + hw, logoCY + hh);
-      ctx.stroke();
+      ctx!.beginPath();
+      ctx!.moveTo(logoCX - hw, logoCY - hh);
+      ctx!.lineTo(logoCX + hw, logoCY + hh);
+      ctx!.stroke();
 
-      ctx.beginPath();
-      ctx.moveTo(logoCX - hw, logoCY + hh);
-      ctx.lineTo(logoCX + hw, logoCY - hh);
-      ctx.stroke();
-      ctx.restore();
+      ctx!.beginPath();
+      ctx!.moveTo(logoCX - hw, logoCY + hh);
+      ctx!.lineTo(logoCX + hw, logoCY - hh);
+      ctx!.stroke();
+      ctx!.restore();
     }
 
     let letterSparklesSpawned = new Set<number>();
@@ -178,15 +175,15 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       }
       draw() {
         if (this.life <= 0) return;
-        ctx.save();
-        ctx.globalAlpha = this.life * 0.65;
-        ctx.fillStyle = this.color;
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = 6 * S;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx!.save();
+        ctx!.globalAlpha = this.life * 0.65;
+        ctx!.fillStyle = this.color;
+        ctx!.shadowColor = this.color;
+        ctx!.shadowBlur = 6 * S;
+        ctx!.beginPath();
+        ctx!.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+        ctx!.fill();
+        ctx!.restore();
       }
     }
 
@@ -209,12 +206,12 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       const charDelay = 0.065;
       const charDuration = 0.22;
 
-      ctx.font = `300 ${fs}px 'Outfit',sans-serif`;
+      ctx!.font = `300 ${fs}px 'Outfit',sans-serif`;
 
       let charPositions: { x: number; w: number }[] = [];
       let xAccum = 0;
       for (let i = 0; i < tenchi.length; i++) {
-        const w = ctx.measureText(tenchi[i]).width;
+        const w = ctx!.measureText(tenchi[i]).width;
         charPositions.push({ x: bx + xAccum, w: w });
         xAccum += w;
       }
@@ -241,36 +238,36 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
         const cx_char = charPositions[i].x + charPositions[i].w / 2;
         const cy_char = by;
 
-        ctx.save();
-        ctx.translate(cx_char, cy_char + slideY);
-        ctx.scale(finalScale, finalScale);
-        ctx.translate(-cx_char, -cy_char);
+        ctx!.save();
+        ctx!.translate(cx_char, cy_char + slideY);
+        ctx!.scale(finalScale, finalScale);
+        ctx!.translate(-cx_char, -cy_char);
 
         if (blurAmount > 0.5) {
-          ctx.globalAlpha = alpha * 0.15;
-          ctx.fillStyle = '#e4eaf0';
+          ctx!.globalAlpha = alpha * 0.15;
+          ctx!.fillStyle = '#e4eaf0';
           const offsets = [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1.4], [0, 1.4], [-1.4, 0], [1.4, 0]];
           offsets.forEach(([ox, oy]) => {
-            ctx.fillText(tenchi[i], charPositions[i].x + ox * blurAmount * 0.5, by + oy * blurAmount * 0.5);
+            ctx!.fillText(tenchi[i], charPositions[i].x + (ox as number) * blurAmount * 0.5, by + (oy as number) * blurAmount * 0.5);
           });
         }
 
         if (epReveal < 0.9) {
-          ctx.globalAlpha = alpha * 0.3 * (1 - epReveal);
-          ctx.fillStyle = '#00b8ff';
-          ctx.shadowColor = '#00b8ff';
-          ctx.shadowBlur = 20 * S;
-          ctx.fillText(tenchi[i], charPositions[i].x, by);
-          ctx.shadowBlur = 0;
+          ctx!.globalAlpha = alpha * 0.3 * (1 - epReveal);
+          ctx!.fillStyle = '#00b8ff';
+          ctx!.shadowColor = '#00b8ff';
+          ctx!.shadowBlur = 20 * S;
+          ctx!.fillText(tenchi[i], charPositions[i].x, by);
+          ctx!.shadowBlur = 0;
         }
 
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = '#e4eaf0';
-        ctx.shadowColor = 'rgba(255,255,255,0.15)';
-        ctx.shadowBlur = 2 * S;
-        ctx.fillText(tenchi[i], charPositions[i].x, by);
+        ctx!.globalAlpha = alpha;
+        ctx!.fillStyle = '#e4eaf0';
+        ctx!.shadowColor = 'rgba(255,255,255,0.15)';
+        ctx!.shadowBlur = 2 * S;
+        ctx!.fillText(tenchi[i], charPositions[i].x, by);
 
-        ctx.restore();
+        ctx!.restore();
 
         if (cp > 0.55 && !letterSparklesSpawned.has(i)) {
           letterSparklesSpawned.add(i);
@@ -293,9 +290,9 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       const oneP = Math.max(0, Math.min(1, oneRawP));
 
       if (oneP > 0) {
-        ctx.font = `600 ${fs}px 'Outfit',sans-serif`;
+        ctx!.font = `600 ${fs}px 'Outfit',sans-serif`;
         const oneX = bx + tenchiTotalW + 8 * S;
-        const oneW = ctx.measureText('One').width;
+        const oneW = ctx!.measureText('One').width;
         const oneCX = oneX + oneW / 2;
 
         const slamP = Math.min(1, oneP / 0.5);
@@ -310,34 +307,34 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
         const oneAlpha = Math.min(1, epSlam * 1.5);
         const glowIntensity = slamP < 1 ? epSlam * 2 : 1 + (1 - settleOP) * 1.5;
 
-        ctx.save();
-        ctx.translate(oneCX + slideX, by);
-        ctx.scale(scaleFinal, scaleFinal);
-        ctx.translate(-oneCX, -by);
+        ctx!.save();
+        ctx!.translate(oneCX + slideX, by);
+        ctx!.scale(scaleFinal, scaleFinal);
+        ctx!.translate(-oneCX, -by);
 
         if (glowIntensity > 1) {
-          ctx.globalAlpha = oneAlpha * 0.2 * (glowIntensity - 1);
-          ctx.fillStyle = '#00b8ff';
-          ctx.shadowColor = '#00b8ff';
-          ctx.shadowBlur = 50 * S;
-          ctx.fillText('One', oneX + slideX, by);
-          ctx.shadowBlur = 35 * S;
-          ctx.fillText('One', oneX + slideX, by);
+          ctx!.globalAlpha = oneAlpha * 0.2 * (glowIntensity - 1);
+          ctx!.fillStyle = '#00b8ff';
+          ctx!.shadowColor = '#00b8ff';
+          ctx!.shadowBlur = 50 * S;
+          ctx!.fillText('One', oneX + slideX, by);
+          ctx!.shadowBlur = 35 * S;
+          ctx!.fillText('One', oneX + slideX, by);
         }
 
         const continuousGlow = 0.4 + 0.2 * Math.sin(t * 0.003);
-        ctx.globalAlpha = oneAlpha;
-        ctx.shadowColor = 'rgba(0,184,255,0.75)';
-        ctx.shadowBlur = (12 + continuousGlow * 14) * S;
-        ctx.fillStyle = '#00b8ff';
-        ctx.fillText('One', oneX + slideX, by);
+        ctx!.globalAlpha = oneAlpha;
+        ctx!.shadowColor = 'rgba(0,184,255,0.75)';
+        ctx!.shadowBlur = (12 + continuousGlow * 14) * S;
+        ctx!.fillStyle = '#00b8ff';
+        ctx!.fillText('One', oneX + slideX, by);
 
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#50e0ff';
-        ctx.globalAlpha = oneAlpha * 0.3;
-        ctx.fillText('One', oneX + slideX, by);
+        ctx!.shadowBlur = 0;
+        ctx!.fillStyle = '#50e0ff';
+        ctx!.globalAlpha = oneAlpha * 0.3;
+        ctx!.fillText('One', oneX + slideX, by);
 
-        ctx.restore();
+        ctx!.restore();
 
         if (slamP > 0.85 && !oneBurstSpawned) {
           oneBurstSpawned = true;
@@ -357,39 +354,39 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       const y0 = logoCY + 22 * S;
       const len = 320 * S * ep;
 
-      const g = ctx.createLinearGradient(x0, 0, x0 + len, 0);
+      const g = ctx!.createLinearGradient(x0, 0, x0 + len, 0);
       g.addColorStop(0, 'rgba(0,184,255,0.5)');
       g.addColorStop(0.4, 'rgba(0,184,255,0.2)');
       g.addColorStop(0.7, 'rgba(0,184,255,0.06)');
       g.addColorStop(1, 'rgba(0,184,255,0)');
-      ctx.save();
-      ctx.strokeStyle = g;
-      ctx.lineWidth = 1.2 * S;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x0 + len, y0);
-      ctx.stroke();
+      ctx!.save();
+      ctx!.strokeStyle = g;
+      ctx!.lineWidth = 1.2 * S;
+      ctx!.beginPath();
+      ctx!.moveTo(x0, y0);
+      ctx!.lineTo(x0 + len, y0);
+      ctx!.stroke();
 
       if (ep < 0.95) {
         const tipX = x0 + len;
-        ctx.fillStyle = '#00d8ff';
-        ctx.shadowColor = '#00d8ff';
-        ctx.shadowBlur = 12 * S;
-        ctx.globalAlpha = 0.8;
-        ctx.beginPath();
-        ctx.arc(tipX, y0, 2 * S, 0, Math.PI * 2);
-        ctx.fill();
+        ctx!.fillStyle = '#00d8ff';
+        ctx!.shadowColor = '#00d8ff';
+        ctx!.shadowBlur = 12 * S;
+        ctx!.globalAlpha = 0.8;
+        ctx!.beginPath();
+        ctx!.arc(tipX, y0, 2 * S, 0, Math.PI * 2);
+        ctx!.fill();
       }
-      ctx.restore();
+      ctx!.restore();
     }
 
     function drawBG() {
-      const g = ctx.createRadialGradient(logoCX, logoCY, 0, logoCX, logoCY, Math.max(W, H) * 0.7);
+      const g = ctx!.createRadialGradient(logoCX, logoCY, 0, logoCX, logoCY, Math.max(W, H) * 0.7);
       g.addColorStop(0, '#10223a');
       g.addColorStop(0.35, '#0c1a2e');
       g.addColorStop(1, '#060e1a');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
+      ctx!.fillStyle = g;
+      ctx!.fillRect(0, 0, W, H);
     }
 
     let burstDone = false;
@@ -416,11 +413,11 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       const elapsed = timestamp - startTime;
       const tl = T(elapsed);
 
-      ctx.clearRect(0, 0, W, H);
+      ctx!.clearRect(0, 0, W, H);
 
-      ctx.globalAlpha = tl.bg;
+      ctx!.globalAlpha = tl.bg;
       drawBG();
-      ctx.globalAlpha = 1;
+      ctx!.globalAlpha = 1;
 
       // Blue rings
       drawRing(blueOuter, tl.blueOuter, 'rgba(0,184,255,0.2)', 1.3, 'rgba(0,184,255,0.12)', 5);
@@ -453,16 +450,16 @@ export function AnimatedLogo({ onComplete }: { onComplete?: () => void }) {
       energyRings.forEach(r => {
         r.r += 2.5 * S;
         r.life -= 0.022;
-        ctx.save();
-        ctx.globalAlpha = r.life * 0.4;
-        ctx.strokeStyle = r.color;
-        ctx.lineWidth = 2 * S * r.life;
-        ctx.shadowColor = r.color;
-        ctx.shadowBlur = 18 * S;
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
+        ctx!.save();
+        ctx!.globalAlpha = r.life * 0.4;
+        ctx!.strokeStyle = r.color;
+        ctx!.lineWidth = 2 * S * r.life;
+        ctx!.shadowColor = r.color;
+        ctx!.shadowBlur = 18 * S;
+        ctx!.beginPath();
+        ctx!.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx!.stroke();
+        ctx!.restore();
       });
 
       // Particles
