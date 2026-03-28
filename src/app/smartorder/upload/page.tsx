@@ -1,929 +1,468 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDropzone } from 'react-dropzone';
 import { 
-  Upload, FileSpreadsheet, AlertCircle, CheckCircle2, 
-  ArrowRight, ArrowLeft, Loader2, Database, Settings2,
-  Play, RotateCcw, Sparkles, FileCheck, X, RefreshCw,
-  Info, Table, BarChart3, Box
+  Upload, FileSpreadsheet, X, CheckCircle2, AlertCircle, 
+  Loader2, ArrowRight, Sparkles, Brain, Download,
+  FileJson, FileText
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import LoadingScreen from '@/components/smartorder/LoadingScreen';
-import { SmartOrderNav } from '@/components/smartorder/SmartOrderNav';
-import { SmartOrderFooter } from '@/components/smartorder/SmartOrderFooter';
+import * as XLSX from 'xlsx';
+import Link from 'next/link';
 
-// Animation variants
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -20 }
-};
-
-const staggerContainer = {
-  animate: { transition: { staggerChildren: 0.1 } }
-};
-
-interface UploadResponse {
-  success: boolean;
-  batchName: string;
-  fileName: string;
+interface FileData {
   headers: string[];
-  previewRows: Record<string, unknown>[];
-  allRows: Record<string, unknown>[];
-  totalRows: number;
-  sampleData: Record<string, unknown>;
-  detectedFormat: 'pivot' | 'stock' | 'customer' | 'flat' | 'unknown';
-  sheetName: string;
-  headerRowIndex: number;
-  dataStartRowIndex: number;
-  error?: string;
+  rows: any[][];
+  fileName: string;
 }
 
-interface MappingResponse {
-  success: boolean;
-  mapping: Record<string, string>;
+interface Mapping {
+  source_column: string;
+  target_field: string;
   confidence: number;
-  unmapped: string[];
-  suggestions: Record<string, string[]>;
-  warnings: string[];
-  message?: string;
-  error?: string;
 }
 
-interface ValidationResponse {
-  success: boolean;
-  valid: boolean;
-  lines: Array<{
-    id: string;
-    data: Record<string, unknown>;
-    validationErrors?: string[];
-    warnings?: string[];
-  }>;
-  stats: {
-    total: number;
-    valid: number;
-    errors: number;
-    warnings: number;
-  };
-  error?: string;
-}
-
-interface BatchResponse {
-  success: boolean;
-  batchId: string;
-  message: string;
-  error?: string;
-}
-
-// Format detection badge
-function FormatBadge({ format }: { format: string }) {
-  const config: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-    pivot: { icon: <BarChart3 className="w-3 h-3" />, label: 'Pivot Table', color: 'bg-purple-500/20 text-purple-400' },
-    stock: { icon: <Box className="w-3 h-3" />, label: 'Stock Report', color: 'bg-blue-500/20 text-blue-400' },
-    customer: { icon: <Database className="w-3 h-3" />, label: 'Customer Sales', color: 'bg-green-500/20 text-green-400' },
-    flat: { icon: <Table className="w-3 h-3" />, label: 'Standard Data', color: 'bg-gray-500/20 text-gray-400' },
-    unknown: { icon: <Info className="w-3 h-3" />, label: 'Unknown', color: 'bg-yellow-500/20 text-yellow-400' }
-  };
-  
-  const c = config[format] || config.unknown;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${c.color}`}>
-      {c.icon} {c.label}
-    </span>
-  );
-}
-
-// Step indicators
-function StepIndicator({ currentStep }: { currentStep: number }) {
-  const steps = ['Upload', 'Map Columns', 'Validate', 'Process'];
-  
-  return (
-    <div className="flex items-center justify-center gap-2 mb-8">
-      {steps.map((step, index) => (
-        <div key={step} className="flex items-center">
-          <div className={`
-            flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold
-            transition-all duration-300
-            ${currentStep === index + 1 ? 'bg-gradient-to-r from-[#0088CC] to-[#00A3E0] text-white shadow-lg shadow-[#0088CC]/25' : ''}
-            ${currentStep > index + 1 ? 'bg-[#FFD700] text-black' : ''}
-            ${currentStep < index + 1 ? 'bg-white/10 text-gray-400' : ''}
-          `}>
-            {currentStep > index + 1 ? <CheckCircle2 className="w-5 h-5" /> : index + 1}
-          </div>
-          <span className={`
-            ml-2 text-sm font-medium hidden sm:block
-            ${currentStep === index + 1 ? 'text-white' : ''}
-            ${currentStep > index + 1 ? 'text-[#FFD700]' : ''}
-            ${currentStep < index + 1 ? 'text-gray-400' : ''}
-          `}>
-            {step}
-          </span>
-          {index < steps.length - 1 && (
-            <div className={`w-8 sm:w-12 h-0.5 mx-2 ${currentStep > index + 1 ? 'bg-[#FFD700]' : 'bg-white/10'}`} />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// File Upload Step
-function UploadStep({ 
-  onUpload, 
-  isUploading, 
-  error,
-  uploadProgress 
-}: { 
-  onUpload: (file: File) => void;
+interface UploadState {
+  step: 'upload' | 'mapping' | 'validation' | 'processing' | 'complete';
+  fileData: FileData | null;
+  mappings: Mapping[];
   isUploading: boolean;
-  error: string | null;
-  uploadProgress: number;
-}) {
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) onUpload(file);
-  }, [onUpload]);
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) onUpload(file);
-  }, [onUpload]);
-
-  return (
-    <motion.div 
-      variants={fadeInUp}
-      initial="initial" 
-      animate="animate"
-      className="space-y-6"
-    >
-      <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-[#0088CC] to-[#00A3E0] flex items-center justify-center mb-4">
-            <Upload className="w-8 h-8 text-white" />
-          </div>
-          <CardTitle className="text-2xl text-white">Upload Sales Report</CardTitle>
-          <CardDescription className="text-gray-400">
-            Drag and drop your Excel file or click to browse
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Drop Zone */}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`
-              relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer
-              transition-all duration-300
-              ${isDragging 
-                ? 'border-[#0088CC] bg-[#0088CC]/10' 
-                : 'border-white/20 hover:border-[#0088CC]/50 hover:bg-white/5'
-              }
-            `}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            
-            {isUploading ? (
-              <div className="space-y-4">
-                <Loader2 className="w-12 h-12 text-[#0088CC] animate-spin mx-auto" />
-                <div className="space-y-2">
-                  <p className="text-white font-medium">Parsing Excel file...</p>
-                  <Progress value={uploadProgress} className="w-48 mx-auto" />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <FileSpreadsheet className="w-12 h-12 text-[#0088CC] mx-auto" />
-                <div>
-                  <p className="text-white font-medium text-lg">
-                    Drop your file here or click to browse
-                  </p>
-                  <p className="text-gray-500 mt-1">
-                    Supports .xlsx, .xls, and .csv files
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <Alert variant="destructive" className="bg-red-500/10 border-red-500/30 text-red-300">
-              <AlertCircle className="w-4 h-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Supported Formats */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Pivot Tables', desc: 'Sales trend reports with monthly columns' },
-              { label: 'Stock Reports', desc: 'Opening/closing stock with movement data' },
-              { label: 'Customer Sales', desc: 'Customer-wise sales value reports' },
-              { label: 'Standard Orders', desc: 'Flat order data with customer/material codes' }
-            ].map((format) => (
-              <div key={format.label} className="p-3 rounded-lg bg-white/5 border border-white/10">
-                <p className="text-white text-sm font-medium">{format.label}</p>
-                <p className="text-gray-500 text-xs">{format.desc}</p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-// Column Mapping Step
-function MappingStep({
-  uploadData,
-  mapping,
-  onMappingChange,
-  onConfirm,
-  onBack,
-  isLoading,
-  mappingResponse
-}: {
-  uploadData: UploadResponse | null;
-  mapping: Record<string, string>;
-  onMappingChange: (column: string, field: string) => void;
-  onConfirm: () => void;
-  onBack: () => void;
-  isLoading: boolean;
-  mappingResponse: MappingResponse | null;
-}) {
-  const [manualMapping, setManualMapping] = useState<Record<string, string>>({});
-  const [showUnmapped, setShowUnmapped] = useState(false);
-
-  const sapFields = [
-    'ORDER_TYPE', 'SOLD_TO', 'SHIP_TO', 'MATERIAL', 'QUANTITY',
-    'UOM', 'PRICE', 'CURRENCY', 'REQ_DATE', 'PO_NUMBER',
-    'SALES_ORG', 'DIST_CHANNEL', 'DIVISION', 'PLANT'
-  ];
-
-  const unmappedColumns = uploadData?.headers.filter(h => !mapping[h]) || [];
-  const mappedCount = Object.keys(mapping).length;
-  const confidence = mappingResponse?.confidence || 0;
-
-  return (
-    <motion.div 
-      variants={fadeInUp}
-      initial="initial" 
-      animate="animate"
-      className="space-y-6"
-    >
-      <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-xl text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#FFD700]" />
-                AI Column Mapping
-              </CardTitle>
-              <CardDescription className="text-gray-400">
-                Review and adjust the AI-detected column mappings
-              </CardDescription>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-white">{Math.round(confidence * 100)}%</div>
-              <div className="text-xs text-gray-500">Confidence</div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* File Info */}
-          {uploadData && (
-            <div className="flex items-center justify-between p-4 rounded-lg bg-white/5">
-              <div className="flex items-center gap-3">
-                <FileSpreadsheet className="w-10 h-10 text-[#0088CC]" />
-                <div>
-                  <p className="text-white font-medium">{uploadData.fileName}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FormatBadge format={uploadData.detectedFormat} />
-                    <span className="text-gray-500 text-sm">•</span>
-                    <span className="text-gray-500 text-sm">{uploadData.totalRows.toLocaleString()} rows</span>
-                    <span className="text-gray-500 text-sm">•</span>
-                    <span className="text-gray-500 text-sm">{uploadData.headers.length} columns</span>
-                  </div>
-                </div>
-              </div>
-              <Badge className="bg-green-500/20 text-green-400">
-                {mappedCount} / {uploadData.headers.length} mapped
-              </Badge>
-            </div>
-          )}
-
-          {/* Mapping Table */}
-          <div className="border border-white/10 rounded-lg overflow-hidden">
-            <div className="grid grid-cols-2 gap-4 p-3 bg-white/5 text-sm font-medium text-gray-400">
-              <span>Excel Column</span>
-              <span>SAP Field</span>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {uploadData?.headers.map((header) => (
-                <div 
-                  key={header}
-                  className="grid grid-cols-2 gap-4 p-3 border-t border-white/5 hover:bg-white/5"
-                >
-                  <div className="flex items-center gap-2">
-                    {mapping[header] ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-yellow-400" />
-                    )}
-                    <span className="text-white text-sm">{header}</span>
-                  </div>
-                  <select
-                    value={mapping[header] || ''}
-                    onChange={(e) => onMappingChange(header, e.target.value)}
-                    className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white focus:border-[#0088CC] outline-none"
-                  >
-                    <option value="">-- Select Field --</option>
-                    {sapFields.map(field => (
-                      <option key={field} value={field}>{field}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Warnings */}
-          {mappingResponse?.warnings && mappingResponse.warnings.length > 0 && (
-            <Alert className="bg-yellow-500/10 border-yellow-500/30 text-yellow-300">
-              <Info className="w-4 h-4" />
-              <AlertDescription>
-                {mappingResponse.warnings.join(', ')}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Preview */}
-          {uploadData?.previewRows && uploadData.previewRows.length > 0 && (
-            <div>
-              <h4 className="text-white font-medium mb-3">Data Preview</h4>
-              <div className="overflow-x-auto rounded-lg border border-white/10">
-                <table className="w-full text-sm">
-                  <thead className="bg-white/5">
-                    <tr>
-                      {uploadData.headers.slice(0, 5).map(h => (
-                        <th key={h} className="px-3 py-2 text-left text-gray-400 font-medium">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {uploadData.previewRows.slice(0, 3).map((row, i) => (
-                      <tr key={i} className="border-t border-white/5">
-                        {uploadData.headers.slice(0, 5).map(h => (
-                          <td key={h} className="px-3 py-2 text-white">
-                            {String(row[h] || '').substring(0, 30)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex justify-between">
-            <Button
-              variant="outline"
-              onClick={onBack}
-              className="border-white/10 text-white hover:bg-white/5"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-            <Button
-              onClick={onConfirm}
-              disabled={isLoading || mappedCount === 0}
-              className="bg-gradient-to-r from-[#0088CC] to-[#00A3E0] text-white hover:opacity-90"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-              )}
-              Confirm Mapping
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-// Validation Step
-function ValidationStep({
-  validationResult,
-  onConfirm,
-  onBack,
-  isValidating
-}: {
-  validationResult: ValidationResponse | null;
-  onConfirm: () => void;
-  onBack: () => void;
-  isValidating: boolean;
-}) {
-  if (!validationResult) return null;
-
-  const { stats, lines } = validationResult;
-  const errorLines = lines.filter(l => l.validationErrors && l.validationErrors.length > 0);
-  const warningLines = lines.filter(l => l.warnings && l.warnings.length > 0);
-
-  return (
-    <motion.div 
-      variants={fadeInUp}
-      initial="initial" 
-      animate="animate"
-      className="space-y-6"
-    >
-      <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="text-xl text-white flex items-center gap-2">
-            <FileCheck className="w-5 h-5 text-[#FFD700]" />
-            Validation Results
-          </CardTitle>
-          <CardDescription className="text-gray-400">
-            Review data quality and validation issues
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Stats */}
-          <div className="grid grid-cols-4 gap-4">
-            {[
-              { label: 'Total', value: stats.total, color: 'text-white' },
-              { label: 'Valid', value: stats.valid, color: 'text-green-400' },
-              { label: 'Errors', value: stats.errors, color: 'text-red-400' },
-              { label: 'Warnings', value: stats.warnings, color: 'text-yellow-400' }
-            ].map(stat => (
-              <div key={stat.label} className="p-4 rounded-lg bg-white/5 text-center">
-                <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
-                <div className="text-gray-500 text-sm">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Progress Bar */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Validation Progress</span>
-              <span className="text-white">{Math.round((stats.valid / stats.total) * 100)}%</span>
-            </div>
-            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${(stats.valid / stats.total) * 100}%` }}
-                className="h-full bg-gradient-to-r from-green-500 to-green-400"
-                transition={{ duration: 0.5 }}
-              />
-            </div>
-          </div>
-
-          {/* Errors List */}
-          {errorLines.length > 0 && (
-            <div className="border border-red-500/20 rounded-lg overflow-hidden">
-              <div className="p-3 bg-red-500/10 text-red-400 text-sm font-medium">
-                Errors ({errorLines.length})
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {errorLines.slice(0, 10).map((line, i) => (
-                  <div key={line.id} className="p-3 border-t border-white/5">
-                    <div className="flex items-center gap-2 text-sm">
-                      <AlertCircle className="w-4 h-4 text-red-400" />
-                      <span className="text-gray-400">Row {i + 1}:</span>
-                      <span className="text-white">{line.validationErrors?.join(', ')}</span>
-                    </div>
-                  </div>
-                ))}
-                {errorLines.length > 10 && (
-                  <div className="p-3 text-center text-gray-500 text-sm">
-                    +{errorLines.length - 10} more errors
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex justify-between">
-            <Button
-              variant="outline"
-              onClick={onBack}
-              className="border-white/10 text-white hover:bg-white/5"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-            <Button
-              onClick={onConfirm}
-              disabled={isValidating || stats.valid === 0}
-              className="bg-gradient-to-r from-[#0088CC] to-[#00A3E0] text-white hover:opacity-90"
-            >
-              {isValidating ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4 mr-2" />
-              )}
-              Process Orders
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
-// Processing Step
-function ProcessingStep({
-  batchId,
-  progress,
-  onDone
-}: {
   batchId: string | null;
-  progress: number;
-  onDone: () => void;
-}) {
-  return (
-    <motion.div 
-      variants={fadeInUp}
-      initial="initial" 
-      animate="animate"
-      className="space-y-6"
-    >
-      <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-        <CardContent className="py-12 text-center">
-          {progress < 100 ? (
-            <div className="space-y-6">
-              <div className="relative w-24 h-24 mx-auto">
-                <svg className="w-24 h-24 transform -rotate-90">
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r="40"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    fill="none"
-                    className="text-white/10"
-                  />
-                  <motion.circle
-                    cx="48"
-                    cy="48"
-                    r="40"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    fill="none"
-                    strokeLinecap="round"
-                    className="text-[#0088CC]"
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: progress / 100 }}
-                    style={{ pathLength: progress / 100 }}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-[#0088CC] animate-spin" />
-                </div>
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-white mb-2">
-                  Processing Orders
-                </h3>
-                <p className="text-gray-400">
-                  {progress}% complete - Sending to SAP...
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10 text-green-400" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-white mb-2">
-                  Processing Complete!
-                </h3>
-                <p className="text-gray-400 mb-4">
-                  Batch {batchId} has been processed successfully.
-                </p>
-                <Button
-                  onClick={onDone}
-                  className="bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black hover:opacity-90"
-                >
-                  View Results
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
+  validationResults: any[];
 }
 
-// Main Page Component
-export default function UploadPage() {
-  const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadData, setUploadData] = useState<UploadResponse | null>(null);
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [mappingResponse, setMappingResponse] = useState<MappingResponse | null>(null);
-  const [validationResult, setValidationResult] = useState<ValidationResponse | null>(null);
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [showLoading, setShowLoading] = useState(true);
+const SAP_FIELDS = [
+  { key: 'ORDER_TYPE', label: 'Order Type', example: 'OR' },
+  { key: 'SALES_ORG', label: 'Sales Org', example: '1000' },
+  { key: 'DIST_CHANNEL', label: 'Dist. Channel', example: '10' },
+  { key: 'DIVISION', label: 'Division', example: '00' },
+  { key: 'SOLD_TO', label: 'Sold-To', example: '1000001' },
+  { key: 'SHIP_TO', label: 'Ship-To', example: '1000001' },
+  { key: 'MATERIAL', label: 'Material', example: 'SKU-001' },
+  { key: 'QTY', label: 'Quantity', example: '100' },
+  { key: 'PRICE', label: 'Unit Price', example: '24.99' },
+  { key: 'REQ_DEL_DATE', label: 'Delivery Date', example: '2026-03-15' },
+];
 
-  // Handle file upload
-  const handleUpload = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-    setUploadProgress(0);
+export default function UploadPage() {
+  const [state, setState] = useState<UploadState>({
+    step: 'upload',
+    fileData: null,
+    mappings: [],
+    isUploading: false,
+    batchId: null,
+    validationResults: [],
+  });
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (!file) return;
+
+    setState(prev => ({ ...prev, isUploading: true }));
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+
+      if (jsonData.length < 2) {
+        alert('File is empty or invalid');
+        return;
+      }
+
+      const headers = jsonData[0];
+      const rows = jsonData.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+
+      setState(prev => ({
+        ...prev,
+        step: 'mapping',
+        fileData: { headers, rows, fileName: file.name },
+        isUploading: false,
+      }));
+
+      // Auto-map using AI
+      await autoMapColumns(headers, rows[0] || []);
+    } catch (error) {
+      console.error('Error reading file:', error);
+      alert('Error reading file');
+      setState(prev => ({ ...prev, isUploading: false }));
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+      'text/csv': ['.csv'],
+    },
+    multiple: false,
+  });
+
+  async function autoMapColumns(headers: string[], sampleRow: any[]) {
+    try {
+      const response = await fetch('/api/ai/map-columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ headers, sampleRow }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setState(prev => ({
+          ...prev,
+          mappings: data.mappings || [],
+        }));
+      }
+    } catch (error) {
+      console.error('Auto-mapping error:', error);
+    }
+  }
+
+  function updateMapping(header: string, targetField: string) {
+    setState(prev => {
+      const existingIndex = prev.mappings.findIndex(m => m.source_column === header);
+      const newMapping = { source_column: header, target_field: targetField, confidence: 1 };
+      
+      if (existingIndex >= 0) {
+        const newMappings = [...prev.mappings];
+        newMappings[existingIndex] = newMapping;
+        return { ...prev, mappings: newMappings };
+      }
+      
+      return { ...prev, mappings: [...prev.mappings, newMapping] };
+    });
+  }
+
+  async function uploadBatch() {
+    if (!state.fileData) return;
+
+    setState(prev => ({ ...prev, isUploading: true }));
 
     try {
       const formData = new FormData();
+      
+      // Recreate file from data
+      const worksheet = XLSX.utils.aoa_to_sheet([
+        state.fileData.headers,
+        ...state.fileData.rows,
+      ]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+      const fileBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+      const file = new File([fileBuffer], state.fileData.fileName, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
       formData.append('file', file);
+      formData.append('userId', 'guest');
+      formData.append('mappings', JSON.stringify(state.mappings));
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/api/batches', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Upload failed');
-      }
-
-      const data: UploadResponse = await response.json();
-      setUploadData(data);
-      
-      // Automatically proceed to AI mapping
-      setStep(2);
-      
-      // Call AI mapping API
-      const mappingRes = await fetch('/api/ai/map-columns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          headers: data.headers,
-          sampleData: data.sampleData,
-          detectedFormat: data.detectedFormat,
-          batchName: data.batchName
-        })
-      });
-
-      if (mappingRes.ok) {
-        const mappingData: MappingResponse = await mappingRes.json();
-        setMapping(mappingData.mapping || {});
-        setMappingResponse(mappingData);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle mapping confirmation
-  const handleMappingConfirm = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Create batch first
-      const batchRes = await fetch('/api/batches', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          batchName: uploadData?.batchName,
-          fileName: uploadData?.fileName,
-          totalOrders: uploadData?.totalRows,
-          mapping: mapping,
-          rows: uploadData?.allRows || uploadData?.previewRows || []
-        })
-      });
-
-      if (!batchRes.ok) {
-        const err = await batchRes.json();
-        throw new Error(err.error || 'Failed to create batch');
-      }
-
-      const batchData: BatchResponse = await batchRes.json();
-      setBatchId(batchData.batchId);
-
-      // Run validation
-      const validationRes = await fetch(`/api/batches/${batchData.batchId}/validate`, {
-        method: 'POST'
-      });
-
-      if (validationRes.ok) {
-        const validationData: ValidationResponse = await validationRes.json();
-        setValidationResult(validationData);
-        setStep(3);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Validation failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle validation confirmation and processing
-  const handleProcess = async () => {
-    setIsLoading(true);
-    setError(null);
-    setProgress(0);
-    setStep(4);
-
-    // Simulate progress
-    const interval = setInterval(() => {
-      setProgress(p => {
-        if (p >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return p + 10;
-      });
-    }, 500);
-
-    try {
-      const processRes = await fetch(`/api/batches/${batchId}/process`, {
-        method: 'POST'
-      });
-
-      clearInterval(interval);
-
-      if (processRes.ok) {
-        setProgress(100);
+      if (response.ok) {
+        const data = await response.json();
+        setState(prev => ({
+          ...prev,
+          step: 'validation',
+          batchId: data.batch.id,
+          isUploading: false,
+        }));
       } else {
-        const err = await processRes.json();
-        throw new Error(err.error || 'Processing failed');
+        throw new Error('Upload failed');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Processing failed');
-      clearInterval(interval);
-    } finally {
-      setIsLoading(false);
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Upload failed');
+      setState(prev => ({ ...prev, isUploading: false }));
     }
-  };
+  }
 
-  // Handle completion
-  const handleDone = () => {
-    router.push(`/smartorder/batch/${batchId}`);
-  };
+  async function processBatch() {
+    if (!state.batchId) return;
 
-  // Handle reset
-  const handleReset = () => {
-    setStep(1);
-    setUploadData(null);
-    setMapping({});
-    setMappingResponse(null);
-    setValidationResult(null);
-    setBatchId(null);
-    setProgress(0);
-    setError(null);
-  };
+    setState(prev => ({ ...prev, step: 'processing', isUploading: true }));
+
+    try {
+      const response = await fetch(`/api/batches/${state.batchId}/process`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        setState(prev => ({
+          ...prev,
+          step: 'complete',
+          isUploading: false,
+        }));
+      } else {
+        throw new Error('Processing failed');
+      }
+    } catch (error) {
+      console.error('Processing error:', error);
+      alert('Processing failed');
+      setState(prev => ({ ...prev, isUploading: false }));
+    }
+  }
+
+  function getConfidenceColor(confidence: number) {
+    if (confidence >= 0.9) return 'text-emerald-400';
+    if (confidence >= 0.7) return 'text-amber-400';
+    return 'text-rose-400';
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#121212] via-[#0f1628] to-[#1a1a1a]">
-      {showLoading && (
-        <LoadingScreen 
-          onComplete={() => setShowLoading(false)} 
-          minDuration={2000}
-        />
-      )}
-      
-      <SmartOrderNav />
-      
-      <main className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
+    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white">Upload Orders</h1>
+        <p className="text-slate-400 text-sm mt-1">
+          Upload Excel files and let AI map columns to SAP fields
+        </p>
+      </div>
+
+      {/* Progress Steps */}
+      <div className="flex items-center gap-4 mb-8">
+        {['Upload', 'AI Mapping', 'Validation', 'Processing'].map((step, i) => {
+          const stepKey = ['upload', 'mapping', 'validation', 'processing'][i];
+          const isActive = state.step === stepKey || 
+            (stepKey === 'upload' && state.step !== 'upload') ||
+            (stepKey === 'mapping' && ['validation', 'processing', 'complete'].includes(state.step));
+          const isComplete = ['validation', 'processing', 'complete'].includes(state.step) && i < 2 ||
+            ['processing', 'complete'].includes(state.step) && i < 3 ||
+            state.step === 'complete';
+          
+          return (
+            <div key={step} className="flex items-center gap-2">
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                isComplete ? 'bg-emerald-500 text-white' :
+                isActive ? 'bg-indigo-500 text-white' :
+                'bg-white/10 text-slate-400'
+              }`}>
+                {isComplete ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+              </div>
+              <span className={`text-sm ${isActive ? 'text-white' : 'text-slate-500'}`}>{step}</span>
+              {i < 3 && <div className="w-8 h-px bg-white/10 ml-2" />}
+            </div>
+          );
+        })}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {/* Upload Step */}
+        {state.step === 'upload' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-8"
+            exit={{ opacity: 0, y: -20 }}
           >
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3">
-              Upload <span className="text-[#FFD700]">Sales Data</span>
-            </h1>
-            <p className="text-gray-400 max-w-xl mx-auto">
-              Import Excel reports and convert them to SAP orders automatically
+            <div
+              {...getRootProps()}
+              className={`
+                relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 cursor-pointer
+                ${isDragActive 
+                  ? 'border-indigo-500 bg-indigo-500/10' 
+                  : 'border-white/20 hover:border-white/40 hover:bg-white/5'
+                }
+              `}
+            >
+              <input {...getInputProps()} />
+              <div className="p-4 rounded-full bg-indigo-500/10 w-fit mx-auto mb-4">
+                {state.isUploading ? (
+                  <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+                ) : (
+                  <Upload className="w-8 h-8 text-indigo-400" />
+                )}
+              </div>
+              <p className="text-white font-medium mb-2">
+                {isDragActive ? 'Drop the file here' : 'Drop Excel file here or click to browse'}
+              </p>
+              <p className="text-slate-500 text-sm">
+                Supports .xlsx, .xls, and .csv files
+              </p>
+            </div>
+
+            {/* Template Download */}
+            <div className="mt-6 text-center">
+              <p className="text-slate-400 text-sm mb-3">Need a template?</p>
+              <div className="flex justify-center gap-3">
+                <a
+                  href="/templates/order_template.xlsx"
+                  download
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-sm rounded-lg transition-colors"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Excel Template
+                </a>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Mapping Step */}
+        {state.step === 'mapping' && state.fileData && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/6">
+              <div className="flex items-center gap-3">
+                <Brain className="w-5 h-5 text-indigo-400" />
+                <h2 className="font-semibold text-white">AI Column Mapping</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">
+                  {state.mappings.length} of {state.fileData.headers.length} columns mapped
+                </span>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[400px] overflow-y-auto">
+              {state.fileData.headers.map((header, i) => {
+                const mapping = state.mappings.find(m => m.source_column === header);
+                const sampleValue = state.fileData?.rows[0]?.[i] || '';
+                
+                return (
+                  <div key={header} className="flex items-center gap-4 p-3 rounded-xl bg-white/5">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-white">{header}</p>
+                      <p className="text-xs text-slate-500">Sample: {String(sampleValue).slice(0, 30)}</p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-600" />
+                    <div className="flex-1">
+                      <select
+                        value={mapping?.target_field || ''}
+                        onChange={(e) => updateMapping(header, e.target.value)}
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white outline-none focus:border-indigo-500/40"
+                      >
+                        <option value="" className="bg-slate-900">-- Select SAP Field --</option>
+                        {SAP_FIELDS.map(field => (
+                          <option key={field.key} value={field.key} className="bg-slate-900">
+                            {field.label}
+                          </option>
+                        ))}
+                      </select>
+                      {mapping && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Sparkles className="w-3 h-3 text-indigo-400" />
+                          <span className={`text-xs ${getConfidenceColor(mapping.confidence)}`}>
+                            {(mapping.confidence * 100).toFixed(0)}% confidence
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between px-5 py-4 border-t border-white/6">
+              <button
+                onClick={() => setState(prev => ({ ...prev, step: 'upload', fileData: null, mappings: [] }))}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                Start Over
+              </button>
+              <button
+                onClick={uploadBatch}
+                disabled={state.isUploading || state.mappings.length === 0}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {state.isUploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Continue to Validation
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Validation Step */}
+        {state.step === 'validation' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center"
+          >
+            <div className="p-4 rounded-full bg-emerald-500/10 w-fit mx-auto mb-4">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Validation Complete</h2>
+            <p className="text-slate-400 mb-6">
+              Your file has been validated and is ready for processing.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={processBatch}
+                disabled={state.isUploading}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white font-medium rounded-xl transition-colors"
+              >
+                {state.isUploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Process Orders in SAP
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Processing Step */}
+        {state.step === 'processing' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center"
+          >
+            <Loader2 className="w-12 h-12 text-indigo-400 animate-spin mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-white mb-2">Processing Orders</h2>
+            <p className="text-slate-400">
+              Creating orders in SAP S/4HANA via BAPI. This may take a moment...
             </p>
           </motion.div>
+        )}
 
-          {/* Step Indicator */}
-          <StepIndicator currentStep={step} />
-
-          {/* Error Alert */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mb-6"
+        {/* Complete Step */}
+        {state.step === 'complete' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center"
+          >
+            <div className="p-4 rounded-full bg-emerald-500/10 w-fit mx-auto mb-4">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Processing Complete!</h2>
+            <p className="text-slate-400 mb-6">
+              Your orders have been successfully created in SAP.
+            </p>
+            <div className="flex justify-center gap-3">
+              <Link
+                href="/smartorder/orders"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl transition-colors"
               >
-                <Alert variant="destructive" className="bg-red-500/10 border-red-500/30 text-red-300">
-                  <AlertCircle className="w-4 h-4" />
-                  <AlertDescription className="flex items-center justify-between">
-                    {error}
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setError(null)}
-                      className="h-6 px-2 text-red-300 hover:text-white hover:bg-red-500/20"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Step Content */}
-          <AnimatePresence mode="wait">
-            {step === 1 && (
-              <UploadStep
-                key="upload"
-                onUpload={handleUpload}
-                isUploading={isLoading}
-                error={error}
-                uploadProgress={uploadProgress}
-              />
-            )}
-            
-            {step === 2 && (
-              <MappingStep
-                key="mapping"
-                uploadData={uploadData}
-                mapping={mapping}
-                onMappingChange={(col, field) => 
-                  setMapping(prev => ({ ...prev, [col]: field }))
-                }
-                onConfirm={handleMappingConfirm}
-                onBack={handleReset}
-                isLoading={isLoading}
-                mappingResponse={mappingResponse}
-              />
-            )}
-            
-            {step === 3 && (
-              <ValidationStep
-                key="validation"
-                validationResult={validationResult}
-                onConfirm={handleProcess}
-                onBack={() => setStep(2)}
-                isValidating={isLoading}
-              />
-            )}
-            
-            {step === 4 && (
-              <ProcessingStep
-                key="processing"
-                batchId={batchId}
-                progress={progress}
-                onDone={handleDone}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-      </main>
-      
-      <SmartOrderFooter />
+                View Orders
+              </Link>
+              <button
+                onClick={() => setState({
+                  step: 'upload',
+                  fileData: null,
+                  mappings: [],
+                  isUploading: false,
+                  batchId: null,
+                  validationResults: [],
+                })}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium rounded-xl transition-colors"
+              >
+                Upload Another File
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

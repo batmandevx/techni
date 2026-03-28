@@ -1,172 +1,186 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UserRole, CreditStatus, BatchStatus, LineStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const CUSTOMERS = [
-  { id: 'C1001', name: 'Al Noor Trading', shipToCity: 'Dubai', country: 'UAE', paymentTerms: 'D30' },
-  { id: 'C1002', name: 'Gulf Retail LLC', shipToCity: 'Abu Dhabi', country: 'UAE', paymentTerms: 'D30' },
-  { id: 'C1003', name: 'Desert Hypermarket', shipToCity: 'Sharjah', country: 'UAE', paymentTerms: 'D45' },
-  { id: 'C1004', name: 'Oasis Superstores', shipToCity: 'Doha', country: 'Qatar', paymentTerms: 'D30' },
-  { id: 'C1005', name: 'Arabian Distribution', shipToCity: 'Riyadh', country: 'KSA', paymentTerms: 'D60' },
-  { id: 'C1006', name: 'Pegasus Retail', shipToCity: 'Kathmandu', country: 'Nepal', paymentTerms: 'D30' },
-  { id: 'C1007', name: 'Mint Trading', shipToCity: 'Colombo', country: 'Sri Lanka', paymentTerms: 'D45' },
-];
-
-const MATERIALS = [
-  { id: 'M2001', description: 'Chocolate Bar 50g', priceUsd: 1.20, storageLocation: 'FG01' },
-  { id: 'M2002', description: 'Fruit Candy Pack 100g', priceUsd: 1.80, storageLocation: 'FG01' },
-  { id: 'M2003', description: 'Caramel Toffee 200g', priceUsd: 2.50, storageLocation: 'FG02' },
-  { id: 'M2004', description: 'Mint Candy Jar', priceUsd: 3.00, storageLocation: 'FG02' },
-  { id: 'M2005', description: 'Assorted Candy Box', priceUsd: 4.50, storageLocation: 'FG03' },
-  { id: 'M2006', description: 'Coffee Candy Bag 150g', priceUsd: 2.20, storageLocation: 'FG01' },
-  { id: 'M2007', description: 'Jelly Beans Pack 200g', priceUsd: 1.90, storageLocation: 'FG01' },
-  { id: 'M2008', description: 'Lollipop Mix 50pc', priceUsd: 3.50, storageLocation: 'FG02' },
-];
-
 async function main() {
-  console.log('🌱 Starting database seed...\n');
+  console.log('Seeding database...');
 
-  // Clear existing data
-  await prisma.orderLine.deleteMany();
-  await prisma.orderStatusHistory.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.inventoryRecord.deleteMany();
-  await prisma.forecastRecord.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.material.deleteMany();
+  // Create admin user
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@tenchi.com' },
+    update: {},
+    create: {
+      email: 'admin@tenchi.com',
+      name: 'Admin User',
+      role: UserRole.ADMIN,
+      isActive: true,
+    },
+  });
+  console.log('Created admin user:', admin.email);
 
-  console.log('✅ Cleared existing data');
+  // Create operator user
+  const operator = await prisma.user.upsert({
+    where: { email: 'operator@tenchi.com' },
+    update: {},
+    create: {
+      email: 'operator@tenchi.com',
+      name: 'Operator User',
+      role: UserRole.OPERATOR,
+      isActive: true,
+    },
+  });
+  console.log('Created operator user:', operator.email);
 
-  // Seed Customers
-  for (const customer of CUSTOMERS) {
-    await prisma.customer.create({
-      data: customer,
-    });
-  }
-  console.log(`✅ Seeded ${CUSTOMERS.length} customers`);
+  // Seed Customer Master
+  const customers = [
+    { customerNumber: '1000001', companyName: 'ABC Retailers Ltd', country: 'USA', region: 'CA', city: 'Los Angeles' },
+    { customerNumber: '1000002', companyName: 'Fresh Mart Inc', country: 'USA', region: 'NY', city: 'New York' },
+    { customerNumber: '1000003', companyName: 'Super Store Chain', country: 'USA', region: 'TX', city: 'Houston' },
+    { customerNumber: '1000004', companyName: 'Global Foods LLC', country: 'USA', region: 'IL', city: 'Chicago' },
+    { customerNumber: '1000005', companyName: 'Metro Distribution', country: 'USA', region: 'FL', city: 'Miami' },
+  ];
 
-  // Seed Materials
-  for (const material of MATERIALS) {
-    await prisma.material.create({
-      data: material,
-    });
-  }
-  console.log(`✅ Seeded ${MATERIALS.length} materials`);
-
-  // Generate 6 months of historical data
-  const months: Date[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const date = new Date();
-    date.setMonth(date.getMonth() - i);
-    date.setDate(1);
-    months.push(date);
-  }
-
-  // Create inventory and forecast records for each material
-  for (const material of MATERIALS) {
-    let openingStock = Math.floor(Math.random() * 3000) + 1000;
-
-    for (const month of months) {
-      const actualSales = Math.floor(Math.random() * 1000) + 200;
-      const forecastDemand = Math.floor(actualSales * (0.9 + Math.random() * 0.2));
-      const stockInTransit = Math.floor(Math.random() * 500) + 100;
-      const safetyStock = Math.floor(actualSales * 0.3);
-      const replenishmentQty = Math.floor(Math.random() * 800) + 200;
-      const closingStock = openingStock + stockInTransit - actualSales + replenishmentQty;
-
-      await prisma.inventoryRecord.create({
-        data: {
-          materialId: material.id,
-          month,
-          openingStock,
-          stockInTransit,
-          actualSales,
-          closingStock,
-          safetyStock,
-          replenishmentQty,
-        },
-      });
-
-      await prisma.forecastRecord.create({
-        data: {
-          materialId: material.id,
-          month,
-          forecastDemand,
-          actualDemand: actualSales,
-          forecastAccuracy: Math.round((1 - Math.abs(forecastDemand - actualSales) / actualSales) * 100),
-          modelUsed: 'gemini-moving-avg',
-        },
-      });
-
-      openingStock = closingStock;
-    }
-  }
-  console.log(`✅ Seeded ${months.length} months of inventory/forecast data`);
-
-  // Create sample orders
-  const orderStatuses = ['DELIVERED', 'SHIPPED', 'INVOICED', 'CONFIRMED', 'PENDING'];
-  const orders = [];
-
-  for (let i = 0; i < 50; i++) {
-    const customer = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)];
-    const orderDate = new Date();
-    orderDate.setDate(orderDate.getDate() - Math.floor(Math.random() * 90));
-
-    const numLines = Math.floor(Math.random() * 3) + 1;
-    const lines = [];
-    let totalAmount = 0;
-
-    for (let j = 0; j < numLines; j++) {
-      const material = MATERIALS[Math.floor(Math.random() * MATERIALS.length)];
-      const quantity = Math.floor(Math.random() * 100) + 10;
-      const lineTotal = quantity * material.priceUsd;
-      totalAmount += lineTotal;
-
-      lines.push({
-        materialId: material.id,
-        quantity,
-        unitPrice: material.priceUsd,
-        lineTotal,
-      });
-    }
-
-    const orderId = `ORD${String(i + 1).padStart(5, '0')}`;
-
-    orders.push({
-      id: orderId,
-      orderDate,
-      customerId: customer.id,
-      status: orderStatuses[Math.floor(Math.random() * orderStatuses.length)],
-      totalAmount,
-      requestedDeliveryDate: new Date(orderDate.getTime() + 7 * 24 * 60 * 60 * 1000),
-      lines,
-    });
-  }
-
-  // Insert orders
-  for (const order of orders) {
-    await prisma.order.create({
-      data: {
-        id: order.id,
-        orderDate: order.orderDate,
-        customerId: order.customerId,
-        status: order.status,
-        totalAmount: order.totalAmount,
-        requestedDeliveryDate: order.requestedDeliveryDate,
-        lines: {
-          create: order.lines,
-        },
+  for (const customer of customers) {
+    await prisma.customerMaster.upsert({
+      where: { customerNumber: customer.customerNumber },
+      update: {},
+      create: {
+        ...customer,
+        salesOrg: '1000',
+        distChannel: '10',
+        division: '00',
+        paymentTerms: 'NET30',
+        shippingCondition: '01',
+        creditStatus: CreditStatus.ACTIVE,
+        isActive: true,
       },
     });
   }
-  console.log(`✅ Seeded ${orders.length} orders`);
+  console.log('Created', customers.length, 'customers');
 
-  console.log('\n🎉 Database seed completed!');
+  // Seed Material Master
+  const materials = [
+    { materialNumber: 'SKU-001', description: 'Premium Coffee Beans 1kg', materialGroup: 'BEVERAGES', category: 'Food', priceUsd: 24.99 },
+    { materialNumber: 'SKU-002', description: 'Organic Tea Selection', materialGroup: 'BEVERAGES', category: 'Food', priceUsd: 18.50 },
+    { materialNumber: 'SKU-003', description: 'Dark Chocolate Bar 100g', materialGroup: 'CONFECTIONERY', category: 'Food', priceUsd: 4.99 },
+    { materialNumber: 'SKU-004', description: 'Whole Grain Cereal 500g', materialGroup: 'CEREALS', category: 'Food', priceUsd: 6.99 },
+    { materialNumber: 'SKU-005', description: 'Olive Oil Extra Virgin 1L', materialGroup: 'OILS', category: 'Food', priceUsd: 15.99 },
+    { materialNumber: 'SKU-006', description: 'Premium Pasta 500g', materialGroup: 'PASTA', category: 'Food', priceUsd: 3.99 },
+    { materialNumber: 'SKU-007', description: 'Organic Honey 500g', materialGroup: 'CONDIMENTS', category: 'Food', priceUsd: 12.99 },
+    { materialNumber: 'SKU-008', description: 'Mixed Nuts 300g', materialGroup: 'SNACKS', category: 'Food', priceUsd: 9.99 },
+  ];
+
+  for (const material of materials) {
+    await prisma.materialMaster.upsert({
+      where: { materialNumber: material.materialNumber },
+      update: {},
+      create: {
+        ...material,
+        baseUom: 'EA',
+        salesUom: 'EA',
+        plant: '1000',
+        isActive: true,
+      },
+    });
+  }
+  console.log('Created', materials.length, 'materials');
+
+  // Seed Pricing Conditions
+  const pricings = [
+    { materialNumber: 'SKU-001', conditionType: 'PR00', amount: 24.99 },
+    { materialNumber: 'SKU-002', conditionType: 'PR00', amount: 18.50 },
+    { materialNumber: 'SKU-003', conditionType: 'PR00', amount: 4.99 },
+    { materialNumber: 'SKU-001', conditionType: 'K004', amount: 2.50 }, // Discount
+    { materialNumber: 'SKU-002', conditionType: 'K004', amount: 1.85 },
+  ];
+
+  for (const pricing of pricings) {
+    await prisma.pricingCondition.create({
+      data: {
+        ...pricing,
+        currency: 'USD',
+        isActive: true,
+      },
+    });
+  }
+  console.log('Created', pricings.length, 'pricing conditions');
+
+  // Seed Sample Order Batch
+  const batch = await prisma.orderBatch.create({
+    data: {
+      batchName: 'Sample Import - March 2026',
+      fileName: 'sample_orders_march.xlsx',
+      fileUrl: '/uploads/sample_march.xlsx',
+      totalOrders: 5,
+      successCount: 4,
+      failedCount: 1,
+      pendingCount: 0,
+      status: BatchStatus.COMPLETED,
+      aiMappingConfidence: 0.94,
+      uploadedBy: admin.id,
+      sapSyncStatus: 'SYNCED',
+      sapSyncAt: new Date(),
+    },
+  });
+
+  // Seed Order Lines
+  const orderLines = [
+    { soldTo: '1000001', shipTo: '1000001', material: 'SKU-001', quantity: 50, unitPrice: 24.99, status: LineStatus.CREATED, sapOrderNumber: '0000012345' },
+    { soldTo: '1000001', shipTo: '1000001', material: 'SKU-003', quantity: 100, unitPrice: 4.99, status: LineStatus.CREATED, sapOrderNumber: '0000012345' },
+    { soldTo: '1000002', shipTo: '1000002', material: 'SKU-002', quantity: 30, unitPrice: 18.50, status: LineStatus.CREATED, sapOrderNumber: '0000012346' },
+    { soldTo: '1000003', shipTo: '1000003', material: 'SKU-004', quantity: 75, unitPrice: 6.99, status: LineStatus.CREATED, sapOrderNumber: '0000012347' },
+    { soldTo: '1000005', shipTo: '1000005', material: 'SKU-999', quantity: 20, unitPrice: 0, status: LineStatus.FAILED, validationErrors: '["Material not found"]' },
+  ];
+
+  for (const line of orderLines) {
+    await prisma.orderLine.create({
+      data: {
+        ...line,
+        batchId: batch.id,
+        rowIndex: orderLines.indexOf(line),
+        orderType: 'OR',
+        salesOrg: '1000',
+        distChannel: '10',
+        division: '00',
+        plant: '1000',
+        currency: 'USD',
+        lineTotal: line.quantity * line.unitPrice,
+        requestedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        processedAt: new Date(),
+      },
+    });
+  }
+  console.log('Created', orderLines.length, 'order lines');
+
+  // Seed Daily Metrics
+  const today = new Date();
+  for (let i = 30; i >= 0; i--) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    
+    await prisma.dailyMetric.upsert({
+      where: { date },
+      update: {},
+      create: {
+        date,
+        totalOrders: Math.floor(Math.random() * 50) + 20,
+        totalValue: Math.random() * 10000 + 5000,
+        successCount: Math.floor(Math.random() * 45) + 15,
+        failedCount: Math.floor(Math.random() * 5),
+        uniqueCustomers: Math.floor(Math.random() * 10) + 3,
+        uniqueMaterials: Math.floor(Math.random() * 8) + 2,
+        avgProcessingTime: Math.random() * 120 + 30,
+      },
+    });
+  }
+  console.log('Created 30 days of metrics');
+
+  console.log('Seeding completed!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seed error:', e);
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {

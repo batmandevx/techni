@@ -1,166 +1,153 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBatch, updateBatch } from '@/lib/smart-order/store';
-import { BatchStatus } from '@/lib/smart-order/types';
+import { prisma } from '@/lib/prisma';
+import { LineStatus, BatchStatus } from '@prisma/client';
 
-// Mock SAP service URL
-const SAP_SERVICE_URL = process.env.SAP_SERVICE_URL || 'http://localhost:8000';
-
-interface SAPOrderResponse {
-  success: boolean;
-  salesOrderNumber?: string;
-  message?: string;
-  error?: string;
-}
-
-async function createSalesOrder(orderData: {
-  orderType: string;
-  salesOrg: string;
-  distChannel: string;
-  division: string;
-  soldTo: string;
-  shipTo: string;
-  material: string;
-  quantity: number;
-  price: number | null;
-  currency: string;
-  poNumber: string;
-  requestedDeliveryDate: string;
-}): Promise<SAPOrderResponse> {
-  try {
-    const response = await fetch(`${SAP_SERVICE_URL}/api/create-sales-order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderData)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      return {
-        success: false,
-        error: error.message || 'SAP service error'
-      };
-    }
-
-    const result = await response.json();
+// Mock SAP BAPI response
+function mockSAPCall(orderLine: any) {
+  const success = Math.random() > 0.1; // 90% success rate
+  
+  if (success) {
     return {
       success: true,
-      salesOrderNumber: result.salesOrderNumber || result.orderNumber,
-      message: result.message
+      orderNumber: '00000' + Math.floor(100000 + Math.random() * 900000),
+      message: 'Order created successfully',
     };
-  } catch (error) {
+  } else {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'SAP connection failed'
+      errors: ['Material not available in plant', 'Pricing condition missing'],
     };
   }
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = await params;
-    const batch = await getBatch(id);
+    const batchId = params.id;
     
+    // Get batch with order lines
+    const batch = await prisma.orderBatch.findUnique({
+      where: { id: batchId },
+      include: { orderLines: true },
+    });
+
     if (!batch) {
-      return NextResponse.json(
-        { error: 'Batch not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
     }
 
-    // Update batch status to processing
-    await updateBatch(id, { status: 'PROCESSING' as BatchStatus });
+    // Update batch status
+    await prisma.orderBatch.update({
+      where: { id: batchId },
+      data: { status: BatchStatus.PROCESSING },
+    });
 
-    // Process each valid line
-    const results = [];
     let successCount = 0;
     let failedCount = 0;
 
-    for (const line of batch.lines) {
-      // Skip lines with validation errors
-      if (line.validationErrors && line.validationErrors.length > 0) {
+    // Process each order line
+    for (const line of batch.orderLines) {
+      // Validate against master data
+      const customer = await prisma.customerMaster.findUnique({
+        where: { customerNumber: line.soldTo },
+      });
+
+      const material = await prisma.materialMaster.findUnique({
+        where: { materialNumber: line.material },
+      });
+
+      if (!customer) {
+        await prisma.orderLine.update({
+          where: { id: line.id },
+          data: {
+            status: LineStatus.FAILED,
+            validationErrors: JSON.stringify(['Customer not found in master data']),
+            processedAt: new Date(),
+          },
+        });
         failedCount++;
         continue;
       }
 
-      // Create SAP order
-      const orderData = {
-        orderType: String(line.orderType || 'OR'),
-        salesOrg: String(line.salesOrg || '1000'),
-        distChannel: String(line.distChannel || '10'),
-        division: String(line.division || '00'),
-        soldTo: String(line.soldTo || ''),
-        shipTo: String(line.shipTo || line.soldTo || ''),
-        material: String(line.material || ''),
-        quantity: Number(line.quantity) || 0,
-        price: line.price ? Number(line.price) : null,
-        currency: String(line.currency || 'USD'),
-        poNumber: String(line.poNumber || `PO-${Date.now()}`),
-        requestedDeliveryDate: String(line.requestedDeliveryDate || new Date().toISOString().split('T')[0])
-      };
+      if (!material) {
+        await prisma.orderLine.update({
+          where: { id: line.id },
+          data: {
+            status: LineStatus.FAILED,
+            validationErrors: JSON.stringify(['Material not found in master data']),
+            processedAt: new Date(),
+          },
+        });
+        failedCount++;
+        continue;
+      }
 
-      const sapResult = await createSalesOrder(orderData);
-
-      // Update line with SAP response
-      line.sapResponse = sapResult.success ? {
-        orderNumber: sapResult.salesOrderNumber || 'N/A',
-        message: sapResult.message
-      } : { error: sapResult.error };
-      line.status = sapResult.success ? 'CREATED' : 'FAILED';
-      line.updatedAt = new Date().toISOString();
+      // Call SAP (mock)
+      const sapResult = mockSAPCall(line);
 
       if (sapResult.success) {
+        await prisma.orderLine.update({
+          where: { id: line.id },
+          data: {
+            status: LineStatus.CREATED,
+            sapOrderNumber: sapResult.orderNumber,
+            sapResponse: JSON.stringify(sapResult),
+            processedAt: new Date(),
+          },
+        });
         successCount++;
       } else {
+        await prisma.orderLine.update({
+          where: { id: line.id },
+          data: {
+            status: LineStatus.FAILED,
+            validationErrors: JSON.stringify(sapResult.errors),
+            sapResponse: JSON.stringify(sapResult),
+            processedAt: new Date(),
+          },
+        });
         failedCount++;
       }
-
-      results.push({
-        lineId: line.id,
-        success: sapResult.success,
-        orderNumber: sapResult.salesOrderNumber,
-        error: sapResult.error
-      });
     }
 
-    // Update batch with results
-    const finalStatus: BatchStatus = failedCount === 0 ? 'COMPLETED' : 
-                                      successCount === 0 ? 'FAILED' : 'PARTIAL_SUCCESS';
+    // Update batch with final status
+    const finalStatus = failedCount === 0 
+      ? BatchStatus.COMPLETED 
+      : successCount > 0 
+        ? BatchStatus.PARTIAL_SUCCESS 
+        : BatchStatus.FAILED;
 
-    await updateBatch(id, {
-      lines: batch.lines,
-      status: finalStatus,
-      successCount,
-      failedCount,
-      pendingCount: 0,
-      report: {
-        progressPercent: 100,
-        createdGroups: successCount,
-        failedGroups: failedCount,
-        averageProcessingTimeMs: 0,
-        message: `Processing complete: ${successCount} success, ${failedCount} failed`
-      }
+    await prisma.orderBatch.update({
+      where: { id: batchId },
+      data: {
+        status: finalStatus,
+        successCount,
+        failedCount,
+        pendingCount: 0,
+        sapSyncStatus: 'SYNCED',
+        sapSyncAt: new Date(),
+      },
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: 'PROCESS_BATCH',
+        entityType: 'OrderBatch',
+        entityId: batchId,
+        details: JSON.stringify({ successCount, failedCount }),
+      },
     });
 
     return NextResponse.json({
       success: true,
-      batchId: id,
       status: finalStatus,
-      stats: {
-        total: batch.lines.length,
-        success: successCount,
-        failed: failedCount
-      },
-      results
+      successCount,
+      failedCount,
     });
-
   } catch (error) {
-    console.error('Process error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Processing failed' },
-      { status: 500 }
-    );
+    console.error('Processing error:', error);
+    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
   }
 }

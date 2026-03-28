@@ -1,12 +1,269 @@
-// Prisma schema is disabled for Vercel deployment
-// Using file-based storage instead
-// To re-enable: uncomment below and add DATABASE_URL env var
+// Tenchi SmartOrder Engine - Full Database Schema
 
-// generator client {
-//   provider = "prisma-client-js"
-// }
+generator client {
+  provider = "prisma-client-js"
+}
 
-// datasource db {
-//   provider = "sqlite"
-//   url      = env("DATABASE_URL")
-// }
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// USER MANAGEMENT
+// ========================
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String?
+  role          UserRole  @default(VIEWER)
+  avatarUrl     String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  uploads       OrderBatch[]
+  auditLogs     AuditLog[]
+  chatMessages  ChatMessage[]
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+// ========================
+// MASTER DATA
+// ========================
+model CustomerMaster {
+  id                String       @id @default(cuid())
+  customerNumber    String       @unique
+  companyName       String
+  salesOrg          String       @default("1000")
+  distChannel       String       @default("10")
+  division          String       @default("00")
+  paymentTerms      String       @default("D30")
+  shippingCondition String       @default("01")
+  country           String
+  region            String?
+  city              String?
+  address           String?
+  creditLimit       Float?
+  creditStatus      CreditStatus @default(ACTIVE)
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  // Relations
+  orderBatches      OrderBatch[]
+  pricingConditions PricingCondition[]
+}
+
+enum CreditStatus {
+  ACTIVE
+  HOLD
+  BLOCKED
+}
+
+model MaterialMaster {
+  id              String   @id @default(cuid())
+  materialNumber  String   @unique
+  description     String
+  baseUom         String   @default("EA")
+  salesUom        String   @default("EA")
+  plant           String   @default("1000")
+  storageLocation String?
+  materialGroup   String?
+  category        String?
+  subCategory     String?
+  priceUsd        Float?
+  costUsd         Float?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  pricingConditions PricingCondition[]
+  orderLines        OrderLine[]
+}
+
+model PricingCondition {
+  id             String    @id @default(cuid())
+  conditionType  String    // PR00, K004, MWST, KF00
+  materialNumber String?
+  customerNumber String?
+  salesOrg       String    @default("1000")
+  amount         Float
+  currency       String    @default("USD")
+  validFrom      DateTime  @default(now())
+  validTo        DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  material MaterialMaster? @relation(fields: [materialNumber], references: [materialNumber])
+  customer CustomerMaster? @relation(fields: [customerNumber], references: [customerNumber])
+}
+
+// ========================
+// ORDER PROCESSING
+// ========================
+model OrderBatch {
+  id                  String      @id @default(cuid())
+  batchName           String
+  fileName            String
+  fileUrl             String
+  totalOrders         Int         @default(0)
+  successCount        Int         @default(0)
+  failedCount         Int         @default(0)
+  pendingCount        Int         @default(0)
+  status              BatchStatus @default(UPLOADED)
+  aiMappingConfidence Float?
+  uploadedBy          String
+  mappingConfig       String?     // JSON of column mappings
+  sapSyncStatus       String?     // SYNCED, PENDING, FAILED
+  sapSyncAt           DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  // Relations
+  orderLines       OrderLine[]
+  auditLogs        AuditLog[]
+  customerMaster   CustomerMaster? @relation(fields: [customerMasterId], references: [id])
+  customerMasterId String?
+  user             User            @relation(fields: [uploadedBy], references: [id])
+}
+
+enum BatchStatus {
+  UPLOADED
+  VALIDATING
+  AI_MAPPING
+  VALIDATED
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIAL_SUCCESS
+}
+
+model OrderLine {
+  id                    String     @id @default(cuid())
+  batchId               String
+  rowIndex              Int
+  orderType             String     @default("OR")
+  salesOrg              String     @default("1000")
+  distChannel           String     @default("10")
+  division              String     @default("00")
+  soldTo                String
+  shipTo                String
+  material              String
+  quantity              Float
+  unitPrice             Float?
+  lineTotal             Float?
+  requestedDeliveryDate DateTime?
+  plant                 String     @default("1000")
+  poNumber              String?
+  currency              String     @default("USD")
+  
+  // SAP Integration
+  sapOrderNumber   String?
+  sapItemNumber    String?
+  status           LineStatus @default(PENDING)
+  validationErrors String?    // JSON array
+  sapResponse      String?    // JSON object
+  retryCount       Int        @default(0)
+  processedAt      DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  batch    OrderBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  materialMaster MaterialMaster? @relation(fields: [material], references: [materialNumber])
+}
+
+enum LineStatus {
+  PENDING
+  VALIDATING
+  VALID
+  INVALID
+  PROCESSING
+  CREATED
+  FAILED
+}
+
+// ========================
+// AUDIT & LOGGING
+// ========================
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String   // UPLOAD, VALIDATE, CREATE_ORDER, EXPORT, etc.
+  entityType String   // OrderBatch, OrderLine, etc.
+  entityId   String
+  details    String?  // JSON
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user  User?       @relation(fields: [userId], references: [id])
+  batch OrderBatch? @relation(fields: [entityId], references: [id])
+}
+
+// ========================
+// AI CHAT
+// ========================
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   // user, assistant, system
+  content   String
+  toolsUsed String?  // JSON
+  context   String?  // JSON
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ========================
+// ANALYTICS & REPORTING
+// ========================
+model DailyMetric {
+  id            String   @id @default(cuid())
+  date          DateTime @unique
+  totalOrders   Int      @default(0)
+  totalValue    Float    @default(0)
+  successCount  Int      @default(0)
+  failedCount   Int      @default(0)
+  uniqueCustomers Int    @default(0)
+  uniqueMaterials Int    @default(0)
+  avgProcessingTime Float? // seconds
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model SavedReport {
+  id          String     @id @default(cuid())
+  name        String
+  type        ReportType
+  description String?
+  filters     String?    // JSON
+  config      String?    // JSON
+  createdBy   String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  lastRunAt   DateTime?
+}
+
+enum ReportType {
+  ABC_ANALYSIS
+  INVENTORY_HEALTH
+  ORDER_SUMMARY
+  FORECAST_ACCURACY
+  CUSTOMER_PERFORMANCE
+  MATERIAL_PERFORMANCE
+  PROCESSING_SUMMARY
+}

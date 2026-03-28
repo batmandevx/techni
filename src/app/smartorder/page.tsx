@@ -1,421 +1,360 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { 
-  Upload, Package, CheckCircle, Clock, AlertTriangle,
-  TrendingUp, ArrowRight, RefreshCw, Sparkles, Zap,
-  FileText, Users, BarChart3, ArrowUpRight, ArrowDownRight
+  Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Clock, 
+  TrendingUp, Package, Users, DollarSign, ArrowUpRight, ArrowDownRight,
+  Download, Sparkles, Brain, BarChart3
 } from 'lucide-react';
-import { SmartOrderBatch, SmartAnalyticsSnapshot } from '@/lib/smart-order/types';
+import { LoadingScreen } from '@/components/ui/loading-screen';
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
+interface Batch {
+  id: string;
+  batchName: string;
+  fileName: string;
+  status: string;
+  totalOrders: number;
+  successCount: number;
+  failedCount: number;
+  aiMappingConfidence: number | null;
+  createdAt: string;
+  _count: { orderLines: number };
+}
+
+interface Analytics {
+  kpis: {
+    totalOrders: number;
+    completedOrders: number;
+    failedOrders: number;
+    successRate: string;
+    totalValue: number;
+    uniqueCustomers: number;
+    uniqueMaterials: number;
+  };
+  dailyTrend: Array<{
+    date: string;
+    orders: number;
+    value: number;
+  }>;
+  topCustomers: Array<{
+    customerNumber: string;
+    customerName: string;
+    orderCount: number;
+    totalValue: number;
+  }>;
+}
+
+function StatCard({ title, value, change, icon: Icon, prefix = '' }: {
+  title: string;
+  value: number | string;
+  change?: string;
+  icon: React.ElementType;
+  prefix?: string;
+}) {
+  const isPositive = change && !change.startsWith('-');
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/[0.07] transition-colors"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-slate-400 text-sm">{title}</p>
+          <p className="text-2xl font-bold text-white mt-1">
+            {prefix}{typeof value === 'number' ? value.toLocaleString() : value}
+          </p>
+        </div>
+        <div className="p-2.5 rounded-xl bg-indigo-500/10">
+          <Icon className="w-5 h-5 text-indigo-400" />
+        </div>
+      </div>
+      {change && (
+        <div className="flex items-center gap-1 mt-3">
+          <span className={`flex items-center text-xs font-medium ${isPositive ? "text-emerald-400" : "text-rose-400"}`}>
+            {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+            {change}
+          </span>
+          <span className="text-slate-500 text-xs">vs last month</span>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function getStatusIcon(status: string) {
+  switch (status) {
+    case 'COMPLETED': return <CheckCircle2 className="w-4 h-4 text-emerald-400" />;
+    case 'PROCESSING': return <Clock className="w-4 h-4 text-amber-400" />;
+    case 'FAILED': return <AlertCircle className="w-4 h-4 text-rose-400" />;
+    case 'PARTIAL_SUCCESS': return <AlertCircle className="w-4 h-4 text-amber-400" />;
+    default: return <Clock className="w-4 h-4 text-slate-400" />;
   }
-};
+}
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 }
-};
+function getStatusClass(status: string) {
+  switch (status) {
+    case 'COMPLETED': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    case 'PROCESSING': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+    case 'FAILED': return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+    case 'PARTIAL_SUCCESS': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+    default: return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+  }
+}
 
 export default function SmartOrderDashboard() {
-  const [batches, setBatches] = useState<SmartOrderBatch[]>([]);
-  const [analytics, setAnalytics] = useState<SmartAnalyticsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
 
   useEffect(() => {
-    fetchDashboardData();
+    fetchData();
   }, []);
 
-  const fetchDashboardData = async () => {
+  async function fetchData() {
     try {
-      setLoading(true);
-      setError(null);
-      
       const [batchesRes, analyticsRes] = await Promise.all([
-        fetch('/api/batches?limit=5'),
-        fetch('/api/analytics')
+        fetch('/api/batches'),
+        fetch('/api/analytics?days=30'),
       ]);
-      
-      if (!batchesRes.ok || !analyticsRes.ok) {
-        throw new Error('Failed to fetch data');
+
+      if (batchesRes.ok) {
+        const batchesData = await batchesRes.json();
+        setBatches(batchesData.batches || []);
       }
-      
-      const batchesData = await batchesRes.json();
-      const analyticsData = await analyticsRes.json();
-      
-      setBatches(batchesData.batches || []);
-      setAnalytics(analyticsData);
+
+      if (analyticsRes.ok) {
+        const analyticsData = await analyticsRes.json();
+        setAnalytics(analyticsData);
+      }
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
-      setError('Failed to load dashboard data');
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const stats = {
-    totalOrders: analytics?.kpis?.ordersCreated || 0,
-    successRate: Math.round((analytics?.kpis?.successRate || 0) * 100),
-    pendingBatches: batches.filter(b => ['UPLOADED', 'VALIDATING', 'VALIDATED', 'PROCESSING'].includes(b.status)).length,
-    todayOrders: batches.filter(b => {
-      const created = new Date(b.createdAt);
-      const today = new Date();
-      return created.toDateString() === today.toDateString();
-    }).reduce((sum, b) => sum + b.successCount, 0),
-  };
+  async function exportBatch(batchId: string, format: 'xlsx' | 'csv') {
+    try {
+      const response = await fetch(`/api/batches/${batchId}/export?format=${format}`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `batch-${batchId}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+    }
+  }
 
-  const statCards = [
-    { 
-      title: 'Total Orders', 
-      value: stats.totalOrders.toLocaleString(), 
-      icon: Package, 
-      color: 'from-blue-500 to-cyan-500',
-      bgColor: 'bg-blue-50',
-      trend: '+12%',
-      trendUp: true
-    },
-    { 
-      title: 'Success Rate', 
-      value: `${stats.successRate}%`, 
-      icon: CheckCircle, 
-      color: 'from-green-500 to-emerald-500',
-      bgColor: 'bg-green-50',
-      trend: '+5%',
-      trendUp: true
-    },
-    { 
-      title: 'Pending Batches', 
-      value: stats.pendingBatches.toString(), 
-      icon: Clock, 
-      color: 'from-orange-500 to-amber-500',
-      bgColor: 'bg-orange-50',
-      trend: '0',
-      trendUp: null
-    },
-    { 
-      title: 'Today\'s Orders', 
-      value: stats.todayOrders.toString(), 
-      icon: TrendingUp, 
-      color: 'from-purple-500 to-pink-500',
-      bgColor: 'bg-purple-50',
-      trend: '+8',
-      trendUp: true
-    },
-  ];
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      'COMPLETED': 'bg-green-100 text-green-800 border-green-200',
-      'FAILED': 'bg-red-100 text-red-800 border-red-200',
-      'PROCESSING': 'bg-blue-100 text-blue-800 border-blue-200',
-      'PARTIAL_SUCCESS': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'UPLOADED': 'bg-gray-100 text-gray-800 border-gray-200',
-      'VALIDATED': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
-  };
+  if (loading) {
+    return <LoadingScreen message="Loading SmartOrder..." />;
+  }
 
   return (
-    <motion.div 
-      className="max-w-7xl mx-auto space-y-8"
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-    >
-      {/* Welcome Section */}
-      <motion.div variants={itemVariants} className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#e89a2d]/10 to-orange-500/10 rounded-3xl" />
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-3xl p-8 border border-white/50 shadow-xl shadow-orange-500/5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-5 h-5 text-[#e89a2d]" />
-                <span className="text-sm font-medium text-[#e89a2d]">Welcome back</span>
-              </div>
-              <h1 className="text-3xl font-bold text-[#1a1a2e]">SmartOrder Dashboard</h1>
-              <p className="text-gray-500 mt-2 max-w-xl">
-                AI-Driven Order Creation. Upload Excel files, let AI map the columns, and create SAP orders automatically.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={fetchDashboardData}
-                className="p-3 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                <RefreshCw className={`w-5 h-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">SmartOrder Engine</h1>
+          <p className="text-slate-400 text-sm mt-1">
+            AI-powered order automation and SAP integration
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/smartorder/upload"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-xl transition-colors"
+          >
+            <Upload className="w-4 h-4" />
+            Upload Orders
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      {analytics && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard 
+            title="Total Orders" 
+            value={analytics.kpis.totalOrders} 
+            change="+12.5%"
+            icon={Package} 
+          />
+          <StatCard 
+            title="Order Value" 
+            value={analytics.kpis.totalValue} 
+            prefix="$"
+            change="+8.2%"
+            icon={DollarSign} 
+          />
+          <StatCard 
+            title="Success Rate" 
+            value={`${analytics.kpis.successRate}%`}
+            icon={CheckCircle2} 
+          />
+          <StatCard 
+            title="Unique Customers" 
+            value={analytics.kpis.uniqueCustomers}
+            change="+5.3%"
+            icon={Users} 
+          />
+        </div>
+      )}
+
+      {/* Recent Batches */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/6">
+          <h2 className="font-semibold text-white">Recent Uploads</h2>
+          <div className="flex items-center gap-2">
+            <Link 
+              href="/smartorder/orders"
+              className="text-xs text-indigo-400 hover:text-indigo-300 px-3 py-1.5 rounded-lg hover:bg-indigo-500/10 transition-colors"
+            >
+              View All
+            </Link>
+          </div>
+        </div>
+        
+        <div className="divide-y divide-white/6">
+          {batches.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <FileSpreadsheet className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm">No uploads yet</p>
               <Link
                 href="/smartorder/upload"
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#e89a2d] to-orange-600 text-white rounded-2xl font-medium shadow-lg shadow-orange-500/30 hover:shadow-xl hover:shadow-orange-500/40 transition-all"
+                className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-xl transition-colors"
               >
-                <Upload className="w-5 h-5" />
-                Upload Orders
+                <Upload className="w-4 h-4" />
+                Upload your first file
               </Link>
             </div>
-          </div>
+          ) : (
+            batches.slice(0, 5).map((batch) => (
+              <div
+                key={batch.id}
+                className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors"
+              >
+                <div className="p-2.5 rounded-lg bg-indigo-500/10">
+                  <FileSpreadsheet className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">
+                    {batch.batchName}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {batch.totalOrders} orders • AI confidence: {((batch.aiMappingConfidence || 0) * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusClass(batch.status)}`}>
+                    {getStatusIcon(batch.status)}
+                    <span className="capitalize">{batch.status.replace('_', ' ')}</span>
+                  </div>
+                  <button
+                    onClick={() => exportBatch(batch.id, 'xlsx')}
+                    className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                    title="Download Excel"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </motion.div>
 
-      {/* Error Display */}
-      {error && (
-        <motion.div 
-          variants={itemVariants}
-          className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3"
-        >
-          <AlertTriangle className="w-5 h-5 text-red-600" />
-          <p className="text-red-800">{error}</p>
-          <button 
-            onClick={() => setError(null)}
-            className="ml-auto text-red-600 hover:text-red-800 font-medium"
-          >
-            Dismiss
-          </button>
-        </motion.div>
-      )}
-
-      {/* Stats Grid */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((stat, index) => (
+      {/* Analytics Section */}
+      {analytics && analytics.topCustomers.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <motion.div
-            key={stat.title}
-            className="group relative bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100"
-            whileHover={{ y: -4 }}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white/5 border border-white/10 rounded-2xl p-6"
           >
-            <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-5 rounded-2xl transition-opacity`} />
-            <div className="relative">
-              <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-xl bg-gradient-to-br ${stat.color} shadow-lg`}>
-                  <stat.icon className="w-6 h-6 text-white" />
-                </div>
-                {stat.trendUp !== null && (
-                  <div className={`flex items-center gap-1 text-sm font-medium ${
-                    stat.trendUp ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {stat.trendUp ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                    {stat.trend}
-                  </div>
-                )}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-semibold text-white">Top Customers</h3>
+              <div className="p-2 rounded-lg bg-indigo-500/10">
+                <BarChart3 className="w-4 h-4 text-indigo-400" />
               </div>
-              <div>
-                <p className="text-gray-500 text-sm">{stat.title}</p>
-                <p className="text-3xl font-bold text-[#1a1a2e] mt-1">
-                  {loading ? '-' : stat.value}
-                </p>
+            </div>
+            <div className="space-y-3">
+              {analytics.topCustomers.slice(0, 5).map((customer, i) => (
+                <div key={customer.customerNumber} className="flex items-center gap-4 p-3 rounded-xl bg-white/5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-xs font-medium text-indigo-400">
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{customer.customerName}</p>
+                    <p className="text-xs text-slate-500">{customer.orderCount} orders</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-emerald-400">${customer.totalValue.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="space-y-4"
+          >
+            <div className="bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-indigo-500/20 rounded-2xl p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500/20">
+                  <Brain className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">AI Column Mapping</h3>
+                  <p className="text-sm text-slate-400 mt-1">
+                    Our AI automatically detects and maps Excel columns to SAP fields with 90%+ accuracy.
+                  </p>
+                  <Link href="/smartorder/upload" className="inline-flex items-center gap-1.5 mt-3 text-sm text-indigo-400 hover:text-indigo-300 font-medium">
+                    Try it now
+                    <ArrowUpRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/20 rounded-2xl p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/20">
+                  <Sparkles className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">SAP Integration</h3>
+                  <p className="text-sm text-slate-400 mt-1">
+                    Direct BAPI integration for real-time order creation in SAP S/4HANA.
+                  </p>
+                  <Link href="/smartorder/orders" className="inline-flex items-center gap-1.5 mt-3 text-sm text-emerald-400 hover:text-emerald-300 font-medium">
+                    View Orders
+                    <ArrowUpRight className="w-4 h-4" />
+                  </Link>
+                </div>
               </div>
             </div>
           </motion.div>
-        ))}
-      </motion.div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Quick Actions */}
-        <motion.div variants={itemVariants} className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-            <h3 className="text-lg font-semibold text-[#1a1a2e] mb-6">Quick Actions</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[
-                { 
-                  href: '/smartorder/upload', 
-                  icon: Upload, 
-                  title: 'Upload Orders', 
-                  desc: 'Excel/CSV files',
-                  color: 'from-orange-500 to-amber-500',
-                  shadow: 'shadow-orange-500/20'
-                },
-                { 
-                  href: '/smartorder/orders', 
-                  icon: Package, 
-                  title: 'View Orders', 
-                  desc: 'History & status',
-                  color: 'from-blue-500 to-cyan-500',
-                  shadow: 'shadow-blue-500/20'
-                },
-                { 
-                  href: '/smartorder/analytics', 
-                  icon: BarChart3, 
-                  title: 'Analytics', 
-                  desc: 'Reports & insights',
-                  color: 'from-purple-500 to-pink-500',
-                  shadow: 'shadow-purple-500/20'
-                },
-              ].map((action, index) => (
-                <Link key={action.href} href={action.href}>
-                  <motion.div
-                    className="group relative p-5 rounded-2xl bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 transition-all duration-300"
-                    whileHover={{ y: -4, scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${action.color} flex items-center justify-center mb-4 shadow-lg ${action.shadow} group-hover:scale-110 transition-transform`}>
-                      <action.icon className="w-6 h-6 text-white" />
-                    </div>
-                    <h4 className="font-semibold text-[#1a1a2e]">{action.title}</h4>
-                    <p className="text-sm text-gray-500 mt-1">{action.desc}</p>
-                    <ArrowRight className="w-5 h-5 text-gray-400 mt-4 group-hover:text-[#e89a2d] group-hover:translate-x-1 transition-all" />
-                  </motion.div>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Orders Trend */}
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-lg font-semibold text-[#1a1a2e]">Orders Trend</h3>
-                <p className="text-sm text-gray-500">Last 30 days performance</p>
-              </div>
-              <select className="text-sm border rounded-xl px-3 py-2 bg-gray-50">
-                <option>Last 7 days</option>
-                <option>Last 30 days</option>
-                <option>Last 90 days</option>
-              </select>
-            </div>
-            
-            {loading ? (
-              <div className="h-64 flex items-center justify-center">
-                <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
-              </div>
-            ) : analytics?.ordersOverTime?.length ? (
-              <div className="h-64 flex items-end gap-2">
-                {analytics.ordersOverTime.slice(-7).map((item, index) => (
-                  <motion.div 
-                    key={index} 
-                    className="flex-1 flex flex-col items-center gap-2"
-                    initial={{ scaleY: 0 }}
-                    animate={{ scaleY: 1 }}
-                    transition={{ delay: index * 0.1 }}
-                    style={{ originY: 1 }}
-                  >
-                    <div 
-                      className="w-full bg-gradient-to-t from-[#e89a2d] to-orange-400 rounded-t-lg transition-all hover:from-orange-600 hover:to-orange-500"
-                      style={{ height: `${(item.count / Math.max(...analytics.ordersOverTime.slice(-7).map(i => i.count))) * 200}px` }}
-                    />
-                    <span className="text-xs text-gray-500">{item.period.slice(-2)}</span>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-gray-400 bg-gray-50 rounded-2xl">
-                <div className="text-center">
-                  <BarChart3 className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                  <p>No data available yet</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Sidebar */}
-        <motion.div variants={itemVariants} className="space-y-6">
-          {/* Recent Batches */}
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-[#1a1a2e]">Recent Batches</h3>
-              <Link 
-                href="/smartorder/orders"
-                className="text-sm text-[#e89a2d] hover:underline flex items-center gap-1"
-              >
-                View All <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-            
-            <div className="space-y-3">
-              {loading ? (
-                <div className="text-center py-8">
-                  <RefreshCw className="w-8 h-8 animate-spin text-gray-400 mx-auto" />
-                </div>
-              ) : batches.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <FileText className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <p className="text-gray-500">No batches yet</p>
-                  <Link 
-                    href="/smartorder/upload"
-                    className="inline-flex items-center gap-2 mt-3 text-[#e89a2d] text-sm font-medium hover:underline"
-                  >
-                    <Zap className="w-4 h-4" />
-                    Upload your first batch
-                  </Link>
-                </div>
-              ) : (
-                batches.slice(0, 5).map((batch, index) => (
-                  <motion.div 
-                    key={batch.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer group"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        batch.status === 'COMPLETED' ? 'bg-green-100' :
-                        batch.status === 'FAILED' ? 'bg-red-100' :
-                        batch.status === 'PROCESSING' ? 'bg-blue-100' :
-                        'bg-gray-100'
-                      }`}>
-                        {batch.status === 'COMPLETED' ? <CheckCircle className="w-5 h-5 text-green-600" /> :
-                         batch.status === 'FAILED' ? <AlertTriangle className="w-5 h-5 text-red-600" /> :
-                         batch.status === 'PROCESSING' ? <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" /> :
-                         <FileText className="w-5 h-5 text-gray-600" />}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm text-[#1a1a2e]">{batch.batchName}</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(batch.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(batch.status)}`}>
-                        {batch.status}
-                      </span>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {batch.successCount}/{batch.totalOrders}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Tips Card */}
-          <div className="bg-gradient-to-br from-[#1a1a2e] to-gray-800 rounded-3xl p-6 text-white">
-            <div className="flex items-center gap-2 mb-4">
-              <Zap className="w-5 h-5 text-[#e89a2d]" />
-              <h3 className="font-semibold">Pro Tips</h3>
-            </div>
-            <ul className="space-y-3 text-sm text-gray-300">
-              <li className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 bg-[#e89a2d] rounded-full mt-2" />
-                Use the Excel template for faster uploads
-              </li>
-              <li className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 bg-[#e89a2d] rounded-full mt-2" />
-                AI mapping works best with standard headers
-              </li>
-              <li className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 bg-[#e89a2d] rounded-full mt-2" />
-                Validate before processing to avoid errors
-              </li>
-            </ul>
-          </div>
-        </motion.div>
-      </div>
-    </motion.div>
+        </div>
+      )}
+    </div>
   );
 }

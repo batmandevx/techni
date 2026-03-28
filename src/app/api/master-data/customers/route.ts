@@ -1,43 +1,71 @@
-import { NextRequest, NextResponse } from "next/server";
-import { deleteEntity, readSmartOrderStore, upsertCustomer } from "@/lib/smart-order/data";
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const store = await readSmartOrderStore();
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
+
+    const where = search ? {
+      OR: [
+        { customerNumber: { contains: search, mode: 'insensitive' as const } },
+        { companyName: { contains: search, mode: 'insensitive' as const } },
+        { city: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : {};
+
+    const [customers, total] = await Promise.all([
+      prisma.customerMaster.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.customerMaster.count({ where }),
+    ]);
+
     return NextResponse.json({
-      customers: store.customers,
-      lastSyncAt: store.metadata.customerSyncAt ?? null,
+      customers,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
-    console.error("customers GET error", error);
-    return NextResponse.json({ error: "Failed to fetch customers." }, { status: 500 });
+    console.error('Error fetching customers:', error);
+    return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as Parameters<typeof upsertCustomer>[0];
-    const store = await upsertCustomer(body);
-    return NextResponse.json({ customers: store.customers });
+    const data = await request.json();
+    
+    const customer = await prisma.customerMaster.create({
+      data: {
+        customerNumber: data.customerNumber,
+        companyName: data.companyName,
+        salesOrg: data.salesOrg || '1000',
+        distChannel: data.distChannel || '10',
+        division: data.division || '00',
+        paymentTerms: data.paymentTerms || 'NET30',
+        shippingCondition: data.shippingCondition || '01',
+        country: data.country,
+        region: data.region,
+        city: data.city,
+        address: data.address,
+        creditLimit: data.creditLimit,
+        isActive: true,
+      },
+    });
+
+    return NextResponse.json({ customer });
   } catch (error) {
-    console.error("customers POST error", error);
-    return NextResponse.json({ error: "Failed to save customer." }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const customerNumber = searchParams.get("customerNumber");
-
-    if (!customerNumber) {
-      return NextResponse.json({ error: "customerNumber is required." }, { status: 400 });
-    }
-
-    const store = await deleteEntity("customers", customerNumber);
-    return NextResponse.json({ customers: store.customers });
-  } catch (error) {
-    console.error("customers DELETE error", error);
-    return NextResponse.json({ error: "Failed to delete customer." }, { status: 500 });
+    console.error('Error creating customer:', error);
+    return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
   }
 }

@@ -1,43 +1,70 @@
-import { NextRequest, NextResponse } from "next/server";
-import { deleteEntity, readSmartOrderStore, upsertMaterial } from "@/lib/smart-order/data";
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const store = await readSmartOrderStore();
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
+
+    const where = search ? {
+      OR: [
+        { materialNumber: { contains: search, mode: 'insensitive' as const } },
+        { description: { contains: search, mode: 'insensitive' as const } },
+        { materialGroup: { contains: search, mode: 'insensitive' as const } },
+      ],
+    } : {};
+
+    const [materials, total] = await Promise.all([
+      prisma.materialMaster.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.materialMaster.count({ where }),
+    ]);
+
     return NextResponse.json({
-      materials: store.materials,
-      lastSyncAt: store.metadata.materialSyncAt ?? null,
+      materials,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
-    console.error("materials GET error", error);
-    return NextResponse.json({ error: "Failed to fetch materials." }, { status: 500 });
+    console.error('Error fetching materials:', error);
+    return NextResponse.json({ error: 'Failed to fetch materials' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as Parameters<typeof upsertMaterial>[0];
-    const store = await upsertMaterial(body);
-    return NextResponse.json({ materials: store.materials });
+    const data = await request.json();
+    
+    const material = await prisma.materialMaster.create({
+      data: {
+        materialNumber: data.materialNumber,
+        description: data.description,
+        baseUom: data.baseUom || 'EA',
+        salesUom: data.salesUom || 'EA',
+        plant: data.plant || '1000',
+        storageLocation: data.storageLocation,
+        materialGroup: data.materialGroup,
+        category: data.category,
+        subCategory: data.subCategory,
+        priceUsd: data.priceUsd,
+        costUsd: data.costUsd,
+        isActive: true,
+      },
+    });
+
+    return NextResponse.json({ material });
   } catch (error) {
-    console.error("materials POST error", error);
-    return NextResponse.json({ error: "Failed to save material." }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const materialNumber = searchParams.get("materialNumber");
-
-    if (!materialNumber) {
-      return NextResponse.json({ error: "materialNumber is required." }, { status: 400 });
-    }
-
-    const store = await deleteEntity("materials", materialNumber);
-    return NextResponse.json({ materials: store.materials });
-  } catch (error) {
-    console.error("materials DELETE error", error);
-    return NextResponse.json({ error: "Failed to delete material." }, { status: 500 });
+    console.error('Error creating material:', error);
+    return NextResponse.json({ error: 'Failed to create material' }, { status: 500 });
   }
 }

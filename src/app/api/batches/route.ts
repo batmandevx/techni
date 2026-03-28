@@ -1,100 +1,162 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createBatch, listBatches } from "@/lib/smart-order/store";
-import { SmartOrderBatch, SmartMappingResult } from "@/lib/smart-order/types";
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { BatchStatus } from '@prisma/client';
+import * as XLSX from 'xlsx';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status");
-    const page = Number(searchParams.get("page") ?? "1");
-    const limit = Number(searchParams.get("limit") ?? "20");
-
-    const allBatches = await listBatches();
-    const filtered = status ? allBatches.filter((batch) => batch.status === status) : allBatches;
-    const startIndex = (page - 1) * limit;
-    const batches = filtered.slice(startIndex, startIndex + limit);
-
-    return NextResponse.json({
-      batches,
-      pagination: {
-        page,
-        limit,
-        total: filtered.length,
-        totalPages: Math.ceil(filtered.length / limit),
+    const batches = await prisma.orderBatch.findMany({
+      include: {
+        _count: {
+          select: { orderLines: true },
+        },
+        user: {
+          select: { name: true, email: true },
+        },
       },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
     });
+
+    return NextResponse.json({ batches });
   } catch (error) {
-    console.error("batches GET error", error);
-    return NextResponse.json({ error: "Failed to fetch batches." }, { status: 500 });
+    console.error('Error fetching batches:', error);
+    return NextResponse.json({ error: 'Failed to fetch batches' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { batchName, fileName, totalOrders, mapping, rows } = body;
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+    const userId = formData.get('userId') as string;
+    const mappingsJson = formData.get('mappings') as string;
 
-    if (!batchName || !fileName) {
-      return NextResponse.json({ error: "batchName and fileName are required." }, { status: 400 });
+    if (!file || !userId) {
+      return NextResponse.json({ error: 'Missing file or userId' }, { status: 400 });
     }
 
-    // Convert simple mapping to SmartMappingResult format
-    const mappingConfig: SmartMappingResult = {
-      mappings: Object.entries(mapping || {}).map(([sourceColumn, targetField]) => ({
-        sourceColumn,
-        targetField: targetField as any,
-        confidence: 0.8,
-        rationale: "User mapped"
-      })),
-      unmappedColumns: [],
-      warnings: [],
-      overallConfidence: 0.8,
-      provider: "heuristic"
-    };
+    // Read file
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
 
-    // Convert rows to SmartOrderLine format
-    const lines = (rows || []).map((row: Record<string, unknown>, index: number) => ({
-      id: `line-${Date.now()}-${index}`,
-      rowIndex: index,
-      orderType: String(row.ORDER_TYPE || row.orderType || 'OR'),
-      salesOrg: String(row.SALES_ORG || row.salesOrg || '1000'),
-      distChannel: String(row.DIST_CHANNEL || row.distChannel || '10'),
-      division: String(row.DIVISION || row.division || '00'),
-      soldTo: String(row.SOLD_TO || row.soldTo || row.Customer || ''),
-      shipTo: String(row.SHIP_TO || row.shipTo || row.SOLD_TO || row.soldTo || row.Customer || ''),
-      material: String(row.MATERIAL || row.material || row.Product || ''),
-      quantity: Number(row.QUANTITY || row.quantity || row.Qty || row.QTY || 0),
-      price: row.PRICE || row.price || row.Rate || null,
-      requestedDeliveryDate: String(row.REQ_DEL_DATE || row.REQ_DATE || row.reqDate || new Date().toISOString().split('T')[0]),
-      plant: String(row.PLANT || row.plant || '1000'),
-      poNumber: String(row.PO_NUMBER || row.poNumber || `PO-${Date.now()}-${index}`),
-      currency: String(row.CURRENCY || row.currency || 'USD'),
-      status: 'PENDING' as const,
-      validationErrors: [],
-      warnings: [],
-      retryCount: 0
-    }));
+    // Parse Excel
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-    // Create batch object matching SmartUploadDraft structure
-    const batchData = {
-      batchName,
-      fileName,
-      uploadedBy: 'system',
-      filePreview: rows?.slice(0, 5) || [],
-      mappingConfig,
-      lines
-    };
+    if (jsonData.length < 2) {
+      return NextResponse.json({ error: 'File is empty or invalid' }, { status: 400 });
+    }
 
-    const batch = await createBatch(batchData);
+    const headers = jsonData[0];
+    const rows = jsonData.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+
+    // Create batch
+    const batch = await prisma.orderBatch.create({
+      data: {
+        batchName: file.name.replace(/\.[^/.]+$/, ''),
+        fileName: file.name,
+        fileUrl: `/uploads/${file.name}`,
+        totalOrders: rows.length,
+        pendingCount: rows.length,
+        status: BatchStatus.UPLOADED,
+        uploadedBy: userId,
+        mappingConfig: mappingsJson,
+        aiMappingConfidence: 0.9,
+      },
+    });
+
+    // Parse mappings
+    const mappings = mappingsJson ? JSON.parse(mappingsJson) : [];
+    const mappingMap: Record<string, string> = {};
+    mappings.forEach((m: any) => {
+      mappingMap[m.source_column] = m.target_field;
+    });
+
+    // Create order lines
+    const orderLines = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowData: Record<string, any> = {};
+      
+      headers.forEach((header, idx) => {
+        const targetField = mappingMap[header];
+        if (targetField) {
+          rowData[targetField] = row[idx];
+        }
+      });
+
+      orderLines.push({
+        batchId: batch.id,
+        rowIndex: i,
+        orderType: rowData.ORDER_TYPE || 'OR',
+        salesOrg: rowData.SALES_ORG || '1000',
+        distChannel: rowData.DIST_CHANNEL || '10',
+        division: rowData.DIVISION || '00',
+        soldTo: String(rowData.SOLD_TO || ''),
+        shipTo: String(rowData.SHIP_TO || rowData.SOLD_TO || ''),
+        material: String(rowData.MATERIAL || ''),
+        quantity: parseFloat(rowData.QTY) || 0,
+        unitPrice: parseFloat(rowData.PRICE) || 0,
+        lineTotal: (parseFloat(rowData.QTY) || 0) * (parseFloat(rowData.PRICE) || 0),
+        currency: 'USD',
+        requestedDeliveryDate: parseDate(rowData.REQ_DEL_DATE),
+        status: 'PENDING',
+      });
+    }
+
+    // Bulk create order lines
+    await prisma.orderLine.createMany({
+      data: orderLines,
+    });
+
+    // Update batch status
+    await prisma.orderBatch.update({
+      where: { id: batch.id },
+      data: { status: BatchStatus.VALIDATED },
+    });
+
+    // Log audit
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'UPLOAD',
+        entityType: 'OrderBatch',
+        entityId: batch.id,
+        details: JSON.stringify({ fileName: file.name, rows: rows.length }),
+      },
+    });
+
     return NextResponse.json({ 
-      success: true,
-      batchId: batch.id,
-      batch 
-    }, { status: 201 });
+      batch,
+      message: 'Batch uploaded successfully',
+      orderCount: orderLines.length,
+    });
   } catch (error) {
-    console.error("batches POST error", error);
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : "Failed to create batch." 
-    }, { status: 500 });
+    console.error('Upload error:', error);
+    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
+}
+
+function parseDate(dateValue: any): Date | null {
+  if (!dateValue) return null;
+  
+  // Try parsing various date formats
+  const date = new Date(dateValue);
+  if (!isNaN(date.getTime())) {
+    return date;
+  }
+  
+  // Try DD.MM.YYYY format
+  if (typeof dateValue === 'string' && dateValue.includes('.')) {
+    const parts = dateValue.split('.');
+    if (parts.length === 3) {
+      const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  
+  return null;
 }
