@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useAuth } from '@clerk/nextjs';
+// Auth disabled for build
 import {
   Package,
   TrendingUp,
@@ -127,7 +127,6 @@ function getStatusClass(status: RecentBatch['status']) {
 }
 
 export default function DashboardPage() {
-  const { isLoaded, isSignedIn } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [recentBatches, setRecentBatches] = useState<RecentBatch[]>([]);
@@ -166,12 +165,10 @@ export default function DashboardPage() {
       }
     }
 
-    if (isLoaded) {
-      fetchDashboardData();
-    }
-  }, [isLoaded]);
+    fetchDashboardData();
+  }, []);
 
-  if (!isLoaded || loading) {
+  if (loading) {
     return <LoadingScreen message="Loading dashboard..." />;
   }
 
@@ -181,7 +178,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">
-            Welcome back{isSignedIn ? '' : ', Guest'}
+            Welcome back
           </h1>
           <p className="text-slate-400 text-sm mt-1">
             Here&apos;s what&apos;s happening with your business today

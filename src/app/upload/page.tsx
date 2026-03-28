@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '@clerk/nextjs';
+// Auth disabled for build
 import {
   Upload,
   FileSpreadsheet,
@@ -27,7 +27,6 @@ interface UploadFile {
 }
 
 export default function UploadPage() {
-  const { isLoaded, isSignedIn } = useAuth();
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -112,10 +111,6 @@ export default function UploadPage() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
-
-  if (!isLoaded) {
-    return <LoadingScreen />;
-  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
