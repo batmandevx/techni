@@ -38,7 +38,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/data ./data
 
-RUN mkdir -p ./uploads
+RUN mkdir -p ./uploads && chown nextjs:nodejs ./uploads
 
 # Switch to non-root user
 USER nextjs

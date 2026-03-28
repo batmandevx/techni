@@ -1,25 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard,
-  Upload,
-  BarChart3,
-  Package,
-  Settings,
-  Truck,
-  Boxes,
-  FileText,
-  Sparkles,
-  ChevronLeft,
-  ChevronRight,
-  Menu,
-  X,
-  Activity,
-  LogIn,
+  LayoutDashboard, Upload, BarChart3, Package, Settings,
+  Truck, Boxes, FileText, Sparkles, ChevronLeft, ChevronRight,
+  Menu, X, Activity, LogOut, User, Brain
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/containers', label: 'Containers', icon: Truck },
   { path: '/production', label: 'Production', icon: Boxes },
   { path: '/upload', label: 'Data Upload', icon: Upload },
+  { path: '/ai-assistant', label: 'AI Assistant', icon: Brain },
   { path: '/reports', label: 'Reports', icon: FileText },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -47,6 +36,13 @@ interface SidebarProps {
   onToggle: () => void;
   mobileOpen: boolean;
   onMobileClose: () => void;
+}
+
+interface UserData {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
 }
 
 function NavItemComponent({ 
@@ -113,29 +109,34 @@ function NavItemComponent({
   );
 }
 
-// Auth section component - simple version without Clerk dependency
-function AuthSection({ collapsed, mobile }: { collapsed: boolean; mobile?: boolean }) {
-  const showLabels = !collapsed || mobile;
-
-  return (
-    <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-all">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center flex-shrink-0">
-        <span className="text-xs font-bold text-white">AU</span>
-      </div>
-      {showLabels && (
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-white truncate">Admin User</div>
-          <Link href="/auth" className="text-[10px] text-slate-500 truncate hover:text-indigo-400">
-            admin@tenchione.com
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<UserData | null>(null);
+
+  useEffect(() => {
+    // Check for auth in localStorage
+    const auth = localStorage.getItem('tenchi_auth');
+    if (auth) {
+      try {
+        const data = JSON.parse(auth);
+        if (data.expiresAt > Date.now()) {
+          setUser(data.user);
+        } else {
+          localStorage.removeItem('tenchi_auth');
+        }
+      } catch {}
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('tenchi_auth');
+    router.push('/auth');
+  };
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
     <div 
@@ -196,7 +197,35 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
           </div>
         )}
 
-        <AuthSection collapsed={collapsed} mobile={mobile} />
+        {/* User Profile */}
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-all">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-white">
+              {user ? getInitials(user.name) : 'GU'}
+            </span>
+          </div>
+          {(!collapsed || mobile) && (
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-white truncate">
+                {user?.name || 'Guest User'}
+              </div>
+              <div className="text-[10px] text-slate-500 truncate">
+                {user?.email || 'Not signed in'}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Logout Button */}
+        {(!collapsed || mobile) && (
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2.5 px-2 py-2 mt-1 w-full rounded-xl hover:bg-white/5 transition-all text-slate-400 hover:text-rose-400"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="text-xs font-medium">Sign Out</span>
+          </button>
+        )}
 
         {(!collapsed || mobile) && (
           <div className="mt-2 px-3 text-center text-[10px] text-slate-700">

@@ -29,3 +29,7 @@ npm-debug.log*
 coverage/
 .nyc_output/
 
+# User uploads (persisted via Docker volume in production)
+uploads/*
+!uploads/.gitkeep
+

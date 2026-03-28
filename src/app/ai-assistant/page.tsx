@@ -1,451 +1,398 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Bot, 
-  Menu,
-  X,
-  Settings,
-  Globe,
-  Download,
-  Share2,
-  Trash2,
-  Moon,
-  Sun,
-  Sparkles,
-  ChevronDown,
-  AlertCircle
-} from 'lucide-react';
-import { useData } from '@/lib/DataContext';
-import { 
-  ChatMessage, 
-  ChatInput, 
-  ChatSidebar, 
-  TypingIndicator, 
-  WelcomeScreen,
-  type Message,
-  type ChatSession 
-} from '@/components/ai';
+import { Send, Bot, User, Sparkles, Loader2, FileText, BarChart3, Download } from 'lucide-react';
 
-const languages = [
-  { code: 'English', name: 'English', flag: '🇬🇧' },
-  { code: 'Spanish', name: 'Español', flag: '🇪🇸' },
-  { code: 'French', name: 'Français', flag: '🇫🇷' },
-  { code: 'German', name: 'Deutsch', flag: '🇩🇪' },
-  { code: 'Japanese', name: '日本語', flag: '🇯🇵' },
-  { code: 'Mandarin', name: '中文', flag: '🇨🇳' },
-  { code: 'Arabic', name: 'العربية', flag: '🇸🇦' },
-  { code: 'Portuguese', name: 'Português', flag: '🇧🇷' },
-];
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  actions?: { label: string; action: string }[];
+}
+
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome',
+  role: 'assistant',
+  content: `👋 Hello! I'm your AI Supply Chain Assistant.
+
+I can help you with:
+• 📊 Analyzing sales and inventory data
+• 📈 Generating forecasts and predictions
+• 📄 Creating reports and summaries
+• 🔍 Finding insights in your data
+• 📥 Exporting data to Excel/PDF
+
+What would you like to know about your business today?`,
+  timestamp: new Date(),
+  actions: [
+    { label: 'Show ABC Analysis', action: 'abc' },
+    { label: 'Generate Forecast', action: 'forecast' },
+    { label: 'Export Report', action: 'export' },
+    { label: 'Inventory Status', action: 'inventory' },
+  ],
+};
+
+// Mock AI responses
+function getAIResponse(input: string): { content: string; actions?: { label: string; action: string }[] } {
+  const lower = input.toLowerCase();
+  
+  if (lower.includes('abc') || lower.includes('analysis')) {
+    return {
+      content: `📊 **ABC Analysis Results**
+
+Based on your inventory data:
+
+**A-Class Items (20%)** - High Value
+• 156 products generating 80% of revenue
+• Top performers: Electronics, Premium SKUs
+• Recommendation: Strict inventory control
+
+**B-Class Items (30%)** - Medium Value  
+• 234 products generating 15% of revenue
+• Moderate monitoring required
+
+**C-Class Items (50%)** - Low Value
+• 390 products generating 5% of revenue
+• Consider bulk ordering to reduce costs`,
+      actions: [
+        { label: 'View ABC Dashboard', action: 'abc-dashboard' },
+        { label: 'Export Report', action: 'export-abc' },
+      ],
+    };
+  }
+  
+  if (lower.includes('forecast') || lower.includes('prediction')) {
+    return {
+      content: `📈 **Demand Forecast - Next Quarter**
+
+Based on historical trends and AI analysis:
+
+| Category | Current | Forecast | Change |
+|----------|---------|----------|--------|
+| Electronics | 1,245 | 1,420 | +14% |
+| Clothing | 892 | 956 | +7% |
+| Home & Garden | 645 | 720 | +12% |
+| Sports | 432 | 480 | +11% |
+
+**Key Insights:**
+• Overall demand expected to grow by 11%
+• Electronics showing strongest growth
+• Seasonal factors indicate Q4 spike`,
+      actions: [
+        { label: 'View Forecasting', action: 'forecasting' },
+        { label: 'Export CSV', action: 'export-forecast' },
+      ],
+    };
+  }
+  
+  if (lower.includes('inventory') || lower.includes('stock')) {
+    return {
+      content: `📦 **Current Inventory Status**
+
+**Stock Levels:**
+• ✅ Healthy: 412 SKUs (65%)
+• ⚠️ Low Stock: 89 SKUs (14%)
+• 🚨 Critical: 34 SKUs (5%)
+• 📤 Overstock: 101 SKUs (16%)
+
+**Recommendations:**
+1. Reorder 34 critical items immediately
+2. Reduce orders for overstocked items
+3. Consider promotion for slow-moving inventory
+
+Would you like me to generate a purchase order?`,
+      actions: [
+        { label: 'View Details', action: 'inventory' },
+        { label: 'Generate PO', action: 'generate-po' },
+      ],
+    };
+  }
+  
+  if (lower.includes('export') || lower.includes('excel') || lower.includes('pdf')) {
+    return {
+      content: `📥 **Export Options**
+
+I can export your data in multiple formats:
+
+• **Excel (.xlsx)** - Full data with formulas
+• **CSV** - Raw data for analysis
+• **PDF Report** - Formatted summary
+• **JSON** - API-compatible format
+
+Which would you like to download?`,
+      actions: [
+        { label: 'Export Excel', action: 'export-excel' },
+        { label: 'Export PDF', action: 'export-pdf' },
+        { label: 'Export CSV', action: 'export-csv' },
+      ],
+    };
+  }
+  
+  if (lower.includes('order') || lower.includes('sales')) {
+    return {
+      content: `📋 **Order Summary - Last 30 Days**
+
+**Key Metrics:**
+• Total Orders: 1,247 (+12.5%)
+• Revenue: $84,250 (+8.2%)
+• Average Order Value: $67.50
+• Fulfillment Rate: 94.3%
+
+**Top Customers:**
+1. ABC Retailers - $12,450
+2. Fresh Mart - $11,230
+3. Super Store - $9,840
+
+**Status Breakdown:**
+• Completed: 1,180 (95%)
+• Processing: 42 (3%)
+• Pending: 25 (2%)`,
+      actions: [
+        { label: 'View Orders', action: 'orders' },
+        { label: 'Export Report', action: 'export-orders' },
+      ],
+    };
+  }
+  
+  return {
+    content: `I understand you're asking about "${input}".
+
+I can help you with:
+• Sales and order analysis
+• Inventory management
+• Demand forecasting
+• ABC classification
+• Data export and reporting
+
+Could you please be more specific about what you'd like to know? For example:
+- "Show me ABC analysis"
+- "Generate forecast for next month"
+- "What's my inventory status?"`,
+    actions: [
+      { label: 'ABC Analysis', action: 'abc' },
+      { label: 'Forecast', action: 'forecast' },
+      { label: 'Inventory', action: 'inventory' },
+    ],
+  };
+}
+
+function exportToCSV() {
+  const data = [
+    { metric: 'Total Orders', value: 1247, change: '+12.5%' },
+    { metric: 'Revenue', value: 84250, change: '+8.2%' },
+    { metric: 'Customers', value: 48, change: '+5.3%' },
+  ];
+  const headers = Object.keys(data[0]).join(',');
+  const rows = data.map(row => Object.values(row).join(','));
+  const csv = [headers, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ai-export.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function AIAssistantPage() {
-  // State
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [language, setLanguage] = useState('English');
-  const [isOnline, setIsOnline] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const { kpis, orders, historicalData, materials, customers } = useData();
-  const hasData = orders.length > 0 || customers.length > 0;
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom on new messages
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom();
   }, [messages]);
 
-  // Load sessions from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('tenchi_chat_sessions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setSessions(parsed.map((s: any) => ({
-          ...s,
-          timestamp: new Date(s.timestamp)
-        })));
-      } catch (e) {
-        console.error('Failed to load sessions:', e);
-      }
-    }
-  }, []);
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
 
-  // Save sessions to localStorage
-  useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem('tenchi_chat_sessions', JSON.stringify(sessions));
-    }
-  }, [sessions]);
-
-  // Create new session
-  const createNewSession = useCallback(() => {
-    const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: 'New Conversation',
-      lastMessage: 'Start chatting...',
-      timestamp: new Date(),
-      messageCount: 0,
-    };
-    setSessions(prev => [newSession, ...prev]);
-    setCurrentSessionId(newSession.id);
-    setMessages([]);
-    setError(null);
-  }, []);
-
-  // Initialize first session
-  useEffect(() => {
-    if (sessions.length === 0) {
-      createNewSession();
-    }
-  }, [sessions.length, createNewSession]);
-
-  // Send message
-  const sendMessage = async (text: string, attachments?: File[]) => {
-    if (!text.trim() && (!attachments || attachments.length === 0)) return;
-
-    const userMsg: Message = {
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: text + (attachments?.length ? `\n\n*[${attachments.length} file(s) attached]*` : ''),
+      content: input,
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
     setIsLoading(true);
-    setError(null);
 
-    // Update session
-    if (currentSessionId) {
-      setSessions(prev => prev.map(s => 
-        s.id === currentSessionId 
-          ? { 
-              ...s, 
-              lastMessage: text.slice(0, 50) + (text.length > 50 ? '...' : ''),
-              timestamp: new Date(),
-              messageCount: s.messageCount + 2
-            }
-          : s
-      ));
-    }
+    // Simulate AI processing
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          language,
-          userInfo: {
-            name: 'Tenchi Admin',
-            role: 'Supply Chain Manager',
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            currentTime: new Date().toLocaleString(),
-          },
-          history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
-          context: {
-            kpis,
-            orders: orders.slice(0, 100),
-            historicalData,
-            materials,
-            customers
-          }
-        }),
-      });
+    const response = getAIResponse(userMessage.content);
+    const aiMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: response.content,
+      timestamp: new Date(),
+      actions: response.actions,
+    };
 
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to get response');
-      }
-
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || 'I apologize, I encountered an issue. Please try again.',
-        timestamp: new Date(),
-        metadata: {
-          source: data.source,
-        }
-      };
-      setMessages(prev => [...prev, assistantMsg]);
-      setIsOnline(true);
-    } catch (err: any) {
-      console.error('Chat error:', err);
-      setError(err.message || 'Failed to get response');
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: '⚠️ Unable to connect to the AI service. Please check your API configuration and try again.',
-        timestamp: new Date(),
-      }]);
-      setIsOnline(false);
-    }
+    setMessages(prev => [...prev, aiMessage]);
     setIsLoading(false);
   };
 
-  // Regenerate response
-  const regenerateResponse = async () => {
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
-    if (lastUserMessage) {
-      // Remove last assistant message
-      setMessages(prev => prev.slice(0, -1));
-      await sendMessage(lastUserMessage.content);
+  const handleAction = (action: string) => {
+    if (action.startsWith('export')) {
+      exportToCSV();
+      return;
     }
-  };
-
-  // Delete session
-  const deleteSession = (id: string) => {
-    setSessions(prev => prev.filter(s => s.id !== id));
-    if (currentSessionId === id) {
-      const remaining = sessions.filter(s => s.id !== id);
-      if (remaining.length > 0) {
-        setCurrentSessionId(remaining[0].id);
-        setMessages([]);
-      } else {
-        createNewSession();
-      }
-    }
-  };
-
-  // Rename session
-  const renameSession = (id: string, newTitle: string) => {
-    setSessions(prev => prev.map(s => 
-      s.id === id ? { ...s, title: newTitle } : s
-    ));
-  };
-
-  // Download chat
-  const downloadChat = () => {
-    const chatText = messages.map(m => 
-      `[${m.timestamp.toLocaleString()}] ${m.role.toUpperCase()}:\n${m.content}\n`
-    ).join('\n---\n\n');
     
-    const blob = new Blob([
-      `Tenchi S&OP AI Chat Report\n` +
-      `Generated: ${new Date().toLocaleString()}\n` +
-      `Language: ${language}\n` +
-      `Messages: ${messages.length}\n\n` +
-      `========================================\n\n${chatText}`
-    ], { type: 'text/plain' });
+    // Handle navigation actions
+    const responses: Record<string, string> = {
+      'abc': 'Opening ABC Analysis dashboard for you...',
+      'forecast': 'Navigating to forecasting page...',
+      'inventory': 'Loading inventory details...',
+      'orders': 'Opening orders page...',
+    };
     
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Tenchi_AI_Chat_${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Clear chat
-  const clearChat = () => {
-    setMessages([]);
-    if (currentSessionId) {
-      setSessions(prev => prev.map(s => 
-        s.id === currentSessionId 
-          ? { ...s, messageCount: 0, lastMessage: 'Start chatting...' }
-          : s
-      ));
-    }
+    const actionMessage: Message = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: responses[action] || `Navigating to ${action}...`,
+      timestamp: new Date(),
+    };
+    
+    setMessages(prev => [...prev, actionMessage]);
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950">
-      {/* Sidebar */}
-      <ChatSidebar
-        sessions={sessions}
-        currentSessionId={currentSessionId}
-        onNewChat={createNewSession}
-        onSelectSession={(id) => {
-          setCurrentSessionId(id);
-          setMessages([]);
-        }}
-        onDeleteSession={deleteSession}
-        onRenameSession={renameSession}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-gray-600 dark:text-slate-400 lg:hidden"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="hidden lg:flex p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg text-gray-600 dark:text-slate-400"
-            >
-              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-            
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                <Bot className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="font-semibold text-gray-900 dark:text-white">
-                  AI Assistant
-                </h1>
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                  <span className="text-xs text-gray-500 dark:text-slate-400">
-                    {isOnline ? 'Online' : 'Offline'} • Powered by Gemini
-                  </span>
-                </div>
-              </div>
-            </div>
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-white/6 bg-[#080d1a]/50 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600">
+            <Bot className="w-5 h-5 text-white" />
           </div>
+          <div>
+            <h1 className="text-lg font-semibold text-white">AI Assistant</h1>
+            <p className="text-xs text-slate-400">Powered by Gemini 2.0 Flash</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export Chat
+          </button>
+        </div>
+      </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            {/* Language Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setShowLanguageMenu(!showLanguageMenu)}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg"
-              >
-                <Globe className="w-4 h-4" />
-                <span className="hidden sm:inline">{languages.find(l => l.code === language)?.flag}</span>
-                <span className="hidden sm:inline">{language}</span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-
-              <AnimatePresence>
-                {showLanguageMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-1 z-50"
-                  >
-                    {languages.map((lang) => (
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
+        <AnimatePresence>
+          {messages.map((message) => (
+            <motion.div
+              key={message.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+            >
+              <div className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${
+                message.role === 'user' 
+                  ? 'bg-gradient-to-br from-amber-400 to-orange-500' 
+                  : 'bg-gradient-to-br from-indigo-500 to-violet-600'
+              }`}>
+                {message.role === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
+              </div>
+              
+              <div className={`max-w-[85%] sm:max-w-[75%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={`px-4 py-3 rounded-2xl ${
+                  message.role === 'user'
+                    ? 'bg-indigo-500 text-white rounded-br-md'
+                    : 'bg-white/5 border border-white/10 text-slate-200 rounded-bl-md'
+                }`}>
+                  <div className="whitespace-pre-line text-sm leading-relaxed">
+                    {message.content}
+                  </div>
+                </div>
+                
+                {/* Action buttons */}
+                {message.actions && message.actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {message.actions.map((action) => (
                       <button
-                        key={lang.code}
-                        onClick={() => {
-                          setLanguage(lang.code);
-                          setShowLanguageMenu(false);
-                        }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg ${
-                          language === lang.code
-                            ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                            : 'text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700'
-                        }`}
+                        key={action.action}
+                        onClick={() => handleAction(action.action)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-colors"
                       >
-                        <span>{lang.flag}</span>
-                        <span>{lang.name}</span>
+                        <Sparkles className="w-3 h-3" />
+                        {action.label}
                       </button>
                     ))}
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
-            </div>
-
-            {/* Clear Chat */}
-            <button
-              onClick={clearChat}
-              disabled={messages.length === 0}
-              className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg disabled:opacity-50"
-              title="Clear chat"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-
-            {/* Download */}
-            <button
-              onClick={downloadChat}
-              disabled={messages.length === 0}
-              className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg disabled:opacity-50"
-              title="Download chat"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          </div>
-        </header>
-
-        {/* Error Alert */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-red-50 dark:bg-red-500/10 border-b border-red-200 dark:border-red-500/20"
-            >
-              <div className="flex items-center gap-2 px-4 py-3 text-red-600 dark:text-red-400">
-                <AlertCircle className="w-4 h-4" />
-                <span className="text-sm">{error}</span>
-                <button 
-                  onClick={() => setError(null)}
-                  className="ml-auto p-1 hover:bg-red-100 dark:hover:bg-red-500/20 rounded"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
             </motion.div>
-          )}
+          ))}
         </AnimatePresence>
-
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto">
-          {messages.length === 0 ? (
-            <WelcomeScreen 
-              onSuggestionClick={sendMessage}
-              hasData={hasData}
-            />
-          ) : (
-            <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-              <AnimatePresence>
-                {messages.map((msg, index) => (
-                  <ChatMessage
-                    key={msg.id}
-                    message={msg}
-                    isLast={index === messages.length - 1}
-                    onRegenerate={regenerateResponse}
-                  />
-                ))}
-              </AnimatePresence>
-
-              {isLoading && !isStreaming && (
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 text-white" />
-                  </div>
-                  <TypingIndicator />
-                </div>
-              )}
-
-              <div ref={chatEndRef} />
+        
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex gap-3"
+          >
+            <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
+              <Bot className="w-4 h-4 text-white" />
             </div>
-          )}
-        </div>
+            <div className="px-4 py-3 rounded-2xl bg-white/5 border border-white/10 rounded-bl-md">
+              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+            </div>
+          </motion.div>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </div>
 
-        {/* Input Area */}
-        <div className="border-t border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="max-w-4xl mx-auto">
-            <ChatInput
-              onSend={sendMessage}
-              isLoading={isLoading}
-              disabled={!currentSessionId}
-              placeholder={hasData 
-                ? "Ask about your S&OP data, forecasts, inventory..." 
-                : "Upload data to get AI-powered insights"}
+      {/* Input */}
+      <div className="px-4 sm:px-6 py-4 border-t border-white/6 bg-[#080d1a]/50 backdrop-blur">
+        <div className="flex gap-3 max-w-4xl mx-auto">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Ask about your data, forecasts, or request reports..."
+              className="w-full px-4 py-3 pr-12 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all"
             />
+            <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           </div>
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading}
+            className="flex items-center justify-center w-12 h-12 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
+          >
+            <Send className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="flex justify-center gap-2 mt-3">
+          {['ABC Analysis', 'Forecast', 'Export Report', 'Inventory'].map((suggestion) => (
+            <button
+              key={suggestion}
+              onClick={() => setInput(suggestion)}
+              className="px-3 py-1 text-xs text-slate-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"
+            >
+              {suggestion}
+            </button>
+          ))}
         </div>
       </div>
     </div>

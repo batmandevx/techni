@@ -18,6 +18,9 @@ services:
       SAP_MOCK: ${SAP_MOCK:-true}
       SMARTORDER_STORAGE: ${SMARTORDER_STORAGE:-auto}
       UPLOAD_DIR: ./uploads
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
     depends_on:
       - db
       - redis

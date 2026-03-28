@@ -1,25 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Package, TrendingUp, Globe, Shield, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Sparkles, Package, TrendingUp, Globe, Shield, Zap, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 const features = [
-  {
-    icon: Package,
-    title: 'Smart Inventory',
-    description: 'ABC analysis with AI-powered insights',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Demand Forecasting',
-    description: 'Advanced algorithms for prediction',
-  },
-  {
-    icon: Globe,
-    title: 'Global Tracking',
-    description: 'Real-time shipment monitoring',
-  },
+  { icon: Package, title: 'Smart Inventory', description: 'ABC analysis with AI-powered insights' },
+  { icon: TrendingUp, title: 'Demand Forecasting', description: 'Advanced algorithms for prediction' },
+  { icon: Globe, title: 'Global Tracking', description: 'Real-time shipment monitoring' },
 ];
 
 const badges = [
@@ -29,9 +19,54 @@ const badges = [
 ];
 
 export default function AuthPage() {
-  // Check if Clerk is configured
-  const clerkConfigured = typeof process !== 'undefined' && 
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const router = useRouter();
+  const [isLogin, setIsLogin] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    name: '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    // Simulate authentication
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Store auth token in localStorage
+    localStorage.setItem('tenchi_auth', JSON.stringify({
+      user: {
+        id: '1',
+        email: formData.email,
+        name: formData.name || 'Admin User',
+        role: 'admin',
+      },
+      token: 'mock-jwt-token',
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+    }));
+
+    setLoading(false);
+    router.push('/');
+  };
+
+  const handleGuestLogin = () => {
+    localStorage.setItem('tenchi_auth', JSON.stringify({
+      user: {
+        id: 'guest',
+        email: 'guest@tenchi.com',
+        name: 'Guest User',
+        role: 'viewer',
+      },
+      token: 'guest-token',
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    }));
+    router.push('/');
+  };
 
   return (
     <div className="min-h-screen bg-[#0f172a] flex">
@@ -124,7 +159,7 @@ export default function AuthPage() {
         </motion.div>
       </motion.div>
 
-      {/* Right Panel - Auth */}
+      {/* Right Panel - Auth Form */}
       <div className="w-full lg:w-1/2 xl:w-2/5 flex items-center justify-center p-6 relative z-10">
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
@@ -140,29 +175,111 @@ export default function AuthPage() {
             <span className="text-xl font-bold text-white">TenchiOne</span>
           </div>
 
-          {/* Auth Content - Simple version without Clerk dependency */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-indigo-500/20">
-                <Sparkles className="w-6 h-6 text-indigo-400" />
+          {/* Auth Form */}
+          <div className="p-8 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-xl">
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {isLogin ? 'Welcome Back' : 'Create Account'}
+            </h2>
+            <p className="text-slate-400 text-sm mb-6">
+              {isLogin ? 'Sign in to access your dashboard' : 'Get started with your free account'}
+            </p>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+                {error}
               </div>
-              <h2 className="text-xl font-bold text-white">Welcome Back</h2>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {!isLogin && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Full Name</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all"
+                    placeholder="John Doe"
+                    required={!isLogin}
+                  />
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all"
+                  placeholder="you@company.com"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all pr-10"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {isLogin && (
+                <div className="flex items-center justify-between text-sm">
+                  <label className="flex items-center gap-2 text-slate-400">
+                    <input type="checkbox" className="rounded border-slate-600 bg-slate-800" />
+                    Remember me
+                  </label>
+                  <Link href="#" className="text-indigo-400 hover:text-indigo-300">
+                    Forgot password?
+                  </Link>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isLogin ? 'Sign In' : 'Create Account'}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center text-sm">
+              <span className="text-slate-400">
+                {isLogin ? "Don't have an account? " : 'Already have an account? '}
+              </span>
+              <button
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-indigo-400 hover:text-indigo-300 font-medium"
+              >
+                {isLogin ? 'Sign up' : 'Sign in'}
+              </button>
             </div>
-            
-            <p className="text-gray-400 mb-6">
-              Sign in to access your S&OP dashboard, manage orders, and analyze your supply chain data.
-            </p>
-            
-            <Link 
-              href="/" 
-              className="flex items-center justify-center w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-medium hover:from-indigo-600 hover:to-violet-700 transition-all"
-            >
-              Continue to Dashboard
-            </Link>
-            
-            <p className="mt-4 text-xs text-center text-slate-500">
-              Authentication will be enabled soon. For now, you can access the dashboard directly.
-            </p>
+
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <button
+                onClick={handleGuestLogin}
+                className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 font-medium rounded-xl transition-all"
+              >
+                Continue as Guest
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>
