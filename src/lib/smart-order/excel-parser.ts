@@ -16,25 +16,35 @@ export interface ParsedExcel {
  */
 function detectFormat(data: unknown[][]): ParsedExcel['detectedFormat'] {
   if (data.length < 2) return 'unknown';
-  
+
   const firstRow = data[0];
   const firstRowStr = JSON.stringify(firstRow).toLowerCase();
-  
-  // Check for pivot table indicators
-  if (firstRowStr.includes('sum of') || firstRowStr.includes('row labels') || firstRowStr.includes('column labels')) {
-    return 'pivot';
-  }
-  
-  // Check for stock report indicators
+  const secondRow = data[1] || [];
+  const secondRowStr = JSON.stringify(secondRow).toLowerCase();
+
+  // Pivot table: Excel pivot tables specifically have "Row Labels" and "Column Labels"
+  // OR have "Sum of" as the FIRST cell text (not embedded in other headers)
+  const firstCell = String(firstRow[0] ?? '').toLowerCase().trim();
+  const isPivot = firstCell.includes('sum of') ||
+    firstRowStr.includes('row labels') ||
+    firstRowStr.includes('column labels');
+  if (isPivot) return 'pivot';
+
+  // Stock/SNS report: has product column + opening/purchase/closing columns
   if (firstRowStr.includes('opening') || firstRowStr.includes('purchase') || firstRowStr.includes('primary')) {
     return 'stock';
   }
-  
-  // Check for customer sales indicators
+
+  // Wide SNS format (WeikField style) - very wide with date-based columns
+  if (secondRowStr.includes('opening') || secondRowStr.includes('purchases')) {
+    return 'stock';
+  }
+
+  // Customer sales indicators
   if (firstRowStr.includes('customer') || firstRowStr.includes('store') || firstRowStr.includes('total amount')) {
     return 'customer';
   }
-  
+
   return 'flat';
 }
 
@@ -205,92 +215,81 @@ function parseStockReport(data: unknown[][]): ParsedExcel {
 }
 
 /**
- * Parse Excel file with intelligent format detection
+ * Parse Excel file with intelligent format detection (Node.js compatible)
  */
 export async function parseExcelFile(file: File): Promise<ParsedExcel> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-        
-        // Get the first sheet
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        
-        // Convert to array format
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
-        
-        if (jsonData.length < 2) {
-          reject(new Error('File must contain at least a header row and one data row'));
-          return;
+  try {
+    // Use ArrayBuffer which works in both browser and Node.js environments
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+
+    // Get the first sheet with data
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Convert to array format
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
+
+    if (jsonData.length < 2) {
+      throw new Error('File must contain at least a header row and one data row');
+    }
+
+    // Detect format
+    const detectedFormat = detectFormat(jsonData);
+
+    // Use specialized parser based on format
+    if (detectedFormat === 'pivot') {
+      const result = parsePivotTable(jsonData);
+      result.sheetName = sheetName;
+      return result;
+    }
+
+    if (detectedFormat === 'stock') {
+      const result = parseStockReport(jsonData);
+      result.sheetName = sheetName;
+      return result;
+    }
+
+    // Default flat format parsing
+    const { headerIndex, dataStartIndex } = findHeaderRow(jsonData);
+    const rawHeaders = jsonData[headerIndex] as unknown[];
+    const headers = rawHeaders.map(normalizeHeader).filter(h => h !== '');
+
+    const rows: Record<string, unknown>[] = [];
+    for (let i = dataStartIndex; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      if (!Array.isArray(row)) continue;
+
+      const hasData = row.some(cell => cell !== undefined && cell !== null && cell !== '');
+      if (!hasData) continue;
+
+      const rowObj: Record<string, unknown> = {};
+      rawHeaders.forEach((header, index) => {
+        const normalizedHeader = normalizeHeader(header);
+        if (normalizedHeader) {
+          rowObj[normalizedHeader] = row[index];
         }
-        
-        // Detect format
-        const detectedFormat = detectFormat(jsonData);
-        
-        // Use specialized parser based on format
-        if (detectedFormat === 'pivot') {
-          const result = parsePivotTable(jsonData);
-          result.sheetName = sheetName;
-          resolve(result);
-          return;
-        }
-        
-        if (detectedFormat === 'stock') {
-          const result = parseStockReport(jsonData);
-          result.sheetName = sheetName;
-          resolve(result);
-          return;
-        }
-        
-        // Default flat format parsing
-        const { headerIndex, dataStartIndex } = findHeaderRow(jsonData);
-        const rawHeaders = jsonData[headerIndex] as unknown[];
-        const headers = rawHeaders.map(normalizeHeader).filter(h => h !== '');
-        
-        const rows: Record<string, unknown>[] = [];
-        for (let i = dataStartIndex; i < jsonData.length; i++) {
-          const row = jsonData[i];
-          if (!Array.isArray(row)) continue;
-          
-          const hasData = row.some(cell => cell !== undefined && cell !== null && cell !== '');
-          if (!hasData) continue;
-          
-          const rowObj: Record<string, unknown> = {};
-          rawHeaders.forEach((header, index) => {
-            const normalizedHeader = normalizeHeader(header);
-            if (normalizedHeader) {
-              rowObj[normalizedHeader] = row[index];
-            }
-          });
-          
-          if (Object.keys(rowObj).length > 0) {
-            rows.push(rowObj);
-          }
-        }
-        
-        resolve({
-          headers,
-          rows,
-          totalRows: rows.length,
-          sheetName,
-          rawData: jsonData,
-          detectedFormat,
-          headerRowIndex: headerIndex,
-          dataStartRowIndex: dataStartIndex
-        });
-        
-      } catch (err) {
-        reject(err);
+      });
+
+      if (Object.keys(rowObj).length > 0) {
+        rows.push(rowObj);
       }
+    }
+
+    return {
+      headers,
+      rows,
+      totalRows: rows.length,
+      sheetName,
+      rawData: jsonData,
+      detectedFormat,
+      headerRowIndex: headerIndex,
+      dataStartRowIndex: dataStartIndex
     };
-    
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsBinaryString(file);
-  });
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('Failed to parse Excel file');
+  }
 }
 
 /**

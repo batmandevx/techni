@@ -2,20 +2,31 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 const isPublicRoute = createRouteMatcher([
+  '/',
   '/auth(.*)',
   '/sign-in(.*)',
   '/sign-up(.*)',
-  '/api/upload',
-  '/api/analytics(.*)',
-  '/api/master-data(.*)',
+  '/api/webhooks(.*)',
 ]);
 
+// Check if Clerk is properly configured
+const isClerkConfigured = () => {
+  return !!process.env.CLERK_SECRET_KEY && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+};
+
 export default clerkMiddleware((auth, req) => {
-  // Allow all public routes without authentication
+  // If Clerk is not configured, allow all requests (for initial deployment)
+  if (!isClerkConfigured()) {
+    console.warn('Clerk not configured - running in public mode');
+    return NextResponse.next();
+  }
+
+  // Allow public routes without authentication
   if (isPublicRoute(req)) {
     return NextResponse.next();
   }
-  // Allow all routes for now (auth is optional)
+
+  // For all other routes, auth is optional for now
   return NextResponse.next();
 });
 

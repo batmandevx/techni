@@ -1,8 +1,9 @@
 'use client';
 
-import { SignIn } from "@clerk/nextjs";
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Package, TrendingUp, Globe, Shield, Zap, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Package, TrendingUp, Globe, Shield, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
 
 const features = [
   {
@@ -28,7 +29,27 @@ const badges = [
   { icon: CheckCircle2, text: 'SAP Integration' },
 ];
 
+// Dynamically import SignIn to handle missing Clerk
+function useClerkSignIn() {
+  const [SignInComponent, setSignInComponent] = useState<any>(null);
+  const [clerkError, setClerkError] = useState(false);
+
+  useEffect(() => {
+    import('@clerk/nextjs')
+      .then((mod) => {
+        setSignInComponent(() => mod.SignIn);
+      })
+      .catch(() => {
+        setClerkError(true);
+      });
+  }, []);
+
+  return { SignInComponent, clerkError };
+}
+
 export default function AuthPage() {
+  const { SignInComponent, clerkError } = useClerkSignIn();
+
   return (
     <div className="min-h-screen bg-[#0f172a] flex">
       {/* Background Effects */}
@@ -120,7 +141,7 @@ export default function AuthPage() {
         </motion.div>
       </motion.div>
 
-      {/* Right Panel - Clerk SignIn */}
+      {/* Right Panel - Auth */}
       <div className="w-full lg:w-1/2 xl:w-2/5 flex items-center justify-center p-6 relative z-10">
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
@@ -136,13 +157,40 @@ export default function AuthPage() {
             <span className="text-xl font-bold text-white">TenchiOne</span>
           </div>
 
-          {/* Clerk SignIn */}
-          <SignIn 
-            routing="path"
-            path="/auth"
-            signUpUrl="/auth"
-            fallbackRedirectUrl="/"
-          />
+          {/* Auth Content */}
+          {clerkError ? (
+            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-amber-500/20">
+                  <AlertCircle className="w-6 h-6 text-amber-400" />
+                </div>
+                <h2 className="text-xl font-bold text-white">Authentication Not Configured</h2>
+              </div>
+              <p className="text-gray-400 mb-6">
+                Clerk authentication is not yet configured. You can continue to the dashboard without signing in.
+              </p>
+              <Link 
+                href="/" 
+                className="flex items-center justify-center w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-medium hover:from-indigo-600 hover:to-violet-700 transition-all"
+              >
+                Continue to Dashboard
+              </Link>
+              <p className="mt-4 text-xs text-center text-slate-500">
+                To enable auth, add Clerk environment variables to your deployment.
+              </p>
+            </div>
+          ) : SignInComponent ? (
+            <SignInComponent 
+              routing="path"
+              path="/auth"
+              signUpUrl="/auth"
+              fallbackRedirectUrl="/"
+            />
+          ) : (
+            <div className="flex items-center justify-center p-8">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

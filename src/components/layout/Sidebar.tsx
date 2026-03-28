@@ -19,8 +19,27 @@ import {
   Menu,
   X,
   Activity,
+  LogIn,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// Try to import Clerk components - fallback if not available
+let SignedIn: any = null;
+let SignedOut: any = null;
+let UserButton: any = null;
+let SignInButton: any = null;
+let clerkAvailable = false;
+
+try {
+  const clerk = require('@clerk/nextjs');
+  SignedIn = clerk.SignedIn;
+  SignedOut = clerk.SignedOut;
+  UserButton = clerk.UserButton;
+  SignInButton = clerk.SignInButton;
+  clerkAvailable = true;
+} catch (e) {
+  // Clerk not available
+}
 
 interface NavItem {
   path: string;
@@ -112,6 +131,70 @@ function NavItemComponent({
   );
 }
 
+// Auth section component - handles both Clerk and non-Clerk modes
+function AuthSection({ collapsed, mobile }: { collapsed: boolean; mobile?: boolean }) {
+  const showLabels = !collapsed || mobile;
+
+  // If Clerk is not available, show static user or login link
+  if (!clerkAvailable) {
+    return (
+      <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-all">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center flex-shrink-0">
+          <span className="text-xs font-bold text-white">G</span>
+        </div>
+        {showLabels && (
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-white truncate">Guest User</div>
+            <Link href="/auth" className="text-[10px] text-indigo-400 hover:text-indigo-300 truncate flex items-center gap-1">
+              <LogIn className="w-3 h-3" /> Sign in
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <SignedIn>
+        <div className={cn("flex items-center gap-2.5", showLabels ? "px-2" : "justify-center")}>
+          <UserButton 
+            afterSignOutUrl="/auth"
+            appearance={{
+              elements: {
+                userButtonAvatarBox: "w-8 h-8",
+              }
+            }}
+          />
+          {showLabels && (
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-white truncate">My Account</div>
+              <div className="text-[10px] text-slate-500 truncate">Authenticated</div>
+            </div>
+          )}
+        </div>
+      </SignedIn>
+      <SignedOut>
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-all">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-white">G</span>
+          </div>
+          {showLabels && (
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-white truncate">Guest User</div>
+              <SignInButton mode="modal">
+                <button className="text-[10px] text-indigo-400 hover:text-indigo-300 truncate flex items-center gap-1">
+                  <LogIn className="w-3 h-3" /> Sign in
+                </button>
+              </SignInButton>
+            </div>
+          )}
+        </div>
+      </SignedOut>
+    </>
+  );
+}
+
 export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
 
@@ -174,17 +257,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
           </div>
         )}
 
-        <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-all">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-white">AU</span>
-          </div>
-          {(!collapsed || mobile) && (
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-white truncate">Admin User</div>
-              <div className="text-[10px] text-slate-500 truncate">admin@tenchione.com</div>
-            </div>
-          )}
-        </div>
+        <AuthSection collapsed={collapsed} mobile={mobile} />
 
         {(!collapsed || mobile) && (
           <div className="mt-2 px-3 text-center text-[10px] text-slate-700">
