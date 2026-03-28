@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, Package, TrendingUp, Globe, Shield, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -29,26 +28,10 @@ const badges = [
   { icon: CheckCircle2, text: 'SAP Integration' },
 ];
 
-// Dynamically import SignIn to handle missing Clerk
-function useClerkSignIn() {
-  const [SignInComponent, setSignInComponent] = useState<any>(null);
-  const [clerkError, setClerkError] = useState(false);
-
-  useEffect(() => {
-    import('@clerk/nextjs')
-      .then((mod) => {
-        setSignInComponent(() => mod.SignIn);
-      })
-      .catch(() => {
-        setClerkError(true);
-      });
-  }, []);
-
-  return { SignInComponent, clerkError };
-}
-
 export default function AuthPage() {
-  const { SignInComponent, clerkError } = useClerkSignIn();
+  // Check if Clerk is configured
+  const clerkConfigured = typeof process !== 'undefined' && 
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   return (
     <div className="min-h-screen bg-[#0f172a] flex">
@@ -157,40 +140,30 @@ export default function AuthPage() {
             <span className="text-xl font-bold text-white">TenchiOne</span>
           </div>
 
-          {/* Auth Content */}
-          {clerkError ? (
-            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-amber-500/20">
-                  <AlertCircle className="w-6 h-6 text-amber-400" />
-                </div>
-                <h2 className="text-xl font-bold text-white">Authentication Not Configured</h2>
+          {/* Auth Content - Simple version without Clerk dependency */}
+          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-indigo-500/20">
+                <Sparkles className="w-6 h-6 text-indigo-400" />
               </div>
-              <p className="text-gray-400 mb-6">
-                Clerk authentication is not yet configured. You can continue to the dashboard without signing in.
-              </p>
-              <Link 
-                href="/" 
-                className="flex items-center justify-center w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-medium hover:from-indigo-600 hover:to-violet-700 transition-all"
-              >
-                Continue to Dashboard
-              </Link>
-              <p className="mt-4 text-xs text-center text-slate-500">
-                To enable auth, add Clerk environment variables to your deployment.
-              </p>
+              <h2 className="text-xl font-bold text-white">Welcome Back</h2>
             </div>
-          ) : SignInComponent ? (
-            <SignInComponent 
-              routing="path"
-              path="/auth"
-              signUpUrl="/auth"
-              fallbackRedirectUrl="/"
-            />
-          ) : (
-            <div className="flex items-center justify-center p-8">
-              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
+            
+            <p className="text-gray-400 mb-6">
+              Sign in to access your S&OP dashboard, manage orders, and analyze your supply chain data.
+            </p>
+            
+            <Link 
+              href="/" 
+              className="flex items-center justify-center w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-medium hover:from-indigo-600 hover:to-violet-700 transition-all"
+            >
+              Continue to Dashboard
+            </Link>
+            
+            <p className="mt-4 text-xs text-center text-slate-500">
+              Authentication will be enabled soon. For now, you can access the dashboard directly.
+            </p>
+          </div>
         </motion.div>
       </div>
     </div>
