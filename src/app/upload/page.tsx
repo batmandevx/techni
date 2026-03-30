@@ -1,48 +1,14 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, FileSpreadsheet, X, CheckCircle2, AlertCircle, Loader2,
   ArrowRight, Database, Sparkles, Eye, Download, FileJson,
-  Table, Trash2, RefreshCw, CheckCircle, TrendingUp, BarChart3,
-  PieChart, Users, DollarSign, Package, Calendar, Hash, FileText,
-  Brain, Activity, Zap, ChevronDown, ChevronUp, ArrowUpRight,
-  ArrowDownRight, Target, Layers
+  Table, Trash2, CheckCircle, BarChart3, Hash
 } from 'lucide-react';
-import { LoadingScreen } from '@/components/ui/loading-screen';
 import { useData } from '@/lib/DataContext';
 import Link from 'next/link';
-
-interface ColumnInsight {
-  name: string;
-  type: 'numeric' | 'text' | 'date' | 'category';
-  uniqueValues: number;
-  nullCount: number;
-  sampleValues: any[];
-  stats?: {
-    min?: number;
-    max?: number;
-    avg?: number;
-    sum?: number;
-  };
-}
-
-interface DataInsights {
-  totalRows: number;
-  totalColumns: number;
-  numericColumns: string[];
-  textColumns: string[];
-  dateColumns: string[];
-  categoryColumns: string[];
-  columnInsights: ColumnInsight[];
-  estimatedRevenue?: number;
-  estimatedOrders?: number;
-  estimatedProducts?: number;
-  estimatedCustomers?: number;
-  dateRange?: { start: string; end: string };
-  topCategories?: { name: string; count: number }[];
-}
 
 interface UploadFile {
   id: string;
@@ -56,139 +22,12 @@ interface UploadFile {
   preview?: any[];
   headers?: string[];
   totalRows?: number;
-  insights?: DataInsights;
-  processingStage?: string;
 }
-
-// Analyze data to generate insights
-const analyzeData = (rows: any[], headers: string[]): DataInsights => {
-  const insights: DataInsights = {
-    totalRows: rows.length,
-    totalColumns: headers.length,
-    numericColumns: [],
-    textColumns: [],
-    dateColumns: [],
-    categoryColumns: [],
-    columnInsights: [],
-  };
-
-  headers.forEach(header => {
-    const values = rows.map(r => r[header]).filter(v => v !== null && v !== undefined && v !== '');
-    const uniqueValues = Array.from(new Set(values));
-    const nullCount = rows.length - values.length;
-    
-    // Determine column type
-    let type: 'numeric' | 'text' | 'date' | 'category' = 'text';
-    let stats = undefined;
-
-    // Check if numeric
-    const numericValues = values.map(v => typeof v === 'string' ? parseFloat(v.replace(/[^0-9.-]/g, '')) : v).filter(v => !isNaN(v));
-    if (numericValues.length / values.length > 0.7) {
-      type = 'numeric';
-      const sum = numericValues.reduce((a, b) => a + b, 0);
-      stats = {
-        min: Math.min(...numericValues),
-        max: Math.max(...numericValues),
-        avg: sum / numericValues.length,
-        sum: sum,
-      };
-      insights.numericColumns.push(header);
-    } else {
-      // Check if date
-      const dateValues = values.map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
-      if (dateValues.length / values.length > 0.7) {
-        type = 'date';
-        insights.dateColumns.push(header);
-      } else if (uniqueValues.length / values.length < 0.3 && uniqueValues.length < 50) {
-        type = 'category';
-        insights.categoryColumns.push(header);
-      } else {
-        insights.textColumns.push(header);
-      }
-    }
-
-    insights.columnInsights.push({
-      name: header,
-      type,
-      uniqueValues: uniqueValues.length,
-      nullCount,
-      sampleValues: values.slice(0, 3),
-      stats,
-    });
-  });
-
-  // Find key columns for estimates
-  const revenueCol = insights.numericColumns.find(h => 
-    h.toLowerCase().includes('revenue') || h.toLowerCase().includes('sales') || 
-    h.toLowerCase().includes('amount') || h.toLowerCase().includes('total')
-  );
-  const quantityCol = insights.numericColumns.find(h => 
-    h.toLowerCase().includes('quantity') || h.toLowerCase().includes('qty') || 
-    h.toLowerCase().includes('count') || h.toLowerCase().includes('units')
-  );
-  const productCol = headers.find(h => 
-    h.toLowerCase().includes('product') || h.toLowerCase().includes('item') || 
-    h.toLowerCase().includes('sku') || h.toLowerCase().includes('name')
-  );
-  const customerCol = headers.find(h => 
-    h.toLowerCase().includes('customer') || h.toLowerCase().includes('client') || 
-    h.toLowerCase().includes('buyer')
-  );
-  const dateCol = insights.dateColumns[0];
-  const categoryCol = insights.categoryColumns[0];
-
-  // Calculate estimates
-  if (revenueCol) {
-    const revenues = rows.map(r => parseFloat(r[revenueCol]) || 0);
-    insights.estimatedRevenue = revenues.reduce((a, b) => a + b, 0);
-  }
-  if (quantityCol) {
-    const qtys = rows.map(r => parseFloat(r[quantityCol]) || 0);
-    insights.estimatedOrders = qtys.reduce((a, b) => a + b, 0);
-  } else {
-    insights.estimatedOrders = rows.length;
-  }
-  if (productCol) {
-    const products = Array.from(new Set(rows.map(r => r[productCol])));
-    insights.estimatedProducts = products.length;
-  }
-  if (customerCol) {
-    const customers = Array.from(new Set(rows.map(r => r[customerCol])));
-    insights.estimatedCustomers = customers.length;
-  }
-
-  // Date range
-  if (dateCol) {
-    const dates = rows.map(r => new Date(r[dateCol])).filter(d => !isNaN(d.getTime()));
-    if (dates.length > 0) {
-      insights.dateRange = {
-        start: new Date(Math.min(...dates.map(d => d.getTime()))).toLocaleDateString(),
-        end: new Date(Math.max(...dates.map(d => d.getTime()))).toLocaleDateString(),
-      };
-    }
-  }
-
-  // Top categories
-  if (categoryCol) {
-    const catCounts: Record<string, number> = {};
-    rows.forEach(r => {
-      const cat = r[categoryCol];
-      if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
-    });
-    insights.topCategories = Object.entries(catCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
-  }
-
-  return insights;
-};
 
 export default function UploadPage() {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [previewFile, setPreviewFile] = useState<UploadFile | null>(null);
-  const [expandedInsights, setExpandedInsights] = useState<string | null>(null);
   const { addUploadedFile, hasRealData, currentData } = useData();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -232,71 +71,57 @@ export default function UploadPage() {
     if (previewFile?.id === id) setPreviewFile(null);
   };
 
-  const updateFileProgress = (id: string, progress: number, stage?: string) => {
-    setFiles(prev => prev.map(f => 
-      f.id === id ? { ...f, progress, processingStage: stage } : f
-    ));
-  };
-
-  const updateFileStatus = (id: string, status: UploadFile['status'], data?: any) => {
-    setFiles(prev => prev.map(f => {
-      if (f.id !== id) return f;
-      const newData = { ...f, status, ...data };
-      if (data?.preview && data?.headers) {
-        newData.insights = analyzeData(data.preview, data.headers);
-      }
-      return newData;
-    }));
-  };
-
   const uploadFile = async (file: UploadFile) => {
-    updateFileStatus(file.id, 'uploading');
+    // Update status to uploading
+    setFiles(prev => prev.map(f => 
+      f.id === file.id ? { ...f, status: 'uploading', progress: 10 } : f
+    ));
 
     try {
-      // Simulate progress stages
-      const stages = ['Reading file...', 'Parsing data...', 'Analyzing columns...', 'Generating insights...'];
-      for (let i = 0; i <= 40; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 150));
-        updateFileProgress(file.id, i, stages[Math.floor(i / 10)]);
-      }
-
-      updateFileStatus(file.id, 'processing');
-
+      // Create form data
       const formData = new FormData();
       formData.append('file', file.file);
 
+      console.log('Uploading file:', file.name);
+
+      // Make API call
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to process file');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Upload error:', errorData);
+        throw new Error(errorData.error || `Failed to process file: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('Upload success:', data);
 
-      for (let i = 50; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        updateFileProgress(file.id, i);
-      }
-
-      // Update with completed status and insights
-      const allRows = data.allRows || data.previewRows || [];
-      updateFileStatus(file.id, 'completed', {
-        data,
-        preview: data.previewRows || allRows.slice(0, 100),
-        headers: data.headers,
-        totalRows: data.totalRows || allRows.length,
-      });
+      // Update file status to completed
+      setFiles(prev => prev.map(f => 
+        f.id === file.id ? { 
+          ...f, 
+          status: 'completed',
+          progress: 100,
+          data: data,
+          preview: data.previewRows || data.allRows?.slice(0, 100) || [],
+          headers: data.headers || [],
+          totalRows: data.totalRows || data.allRows?.length || 0
+        } : f
+      ));
 
       // Save to global context for dashboard
       const fileType = file.name.endsWith('.csv') ? 'csv' : 'xlsx';
-      if (typeof addUploadedFile === 'function') {
+      const allRows = data.allRows || data.previewRows || [];
+      
+      if (addUploadedFile) {
         addUploadedFile({
           name: file.name,
-          headers: data.headers,
+          headers: data.headers || [],
           rows: allRows,
           fileType: fileType as 'xlsx' | 'csv',
         });
@@ -304,9 +129,13 @@ export default function UploadPage() {
 
     } catch (error) {
       console.error('Upload error:', error);
-      updateFileStatus(file.id, 'error', {
-        error: error instanceof Error ? error.message : 'Failed to process file'
-      });
+      setFiles(prev => prev.map(f => 
+        f.id === file.id ? { 
+          ...f, 
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Failed to process file'
+        } : f
+      ));
     }
   };
 
@@ -323,13 +152,6 @@ export default function UploadPage() {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const formatNumber = (num?: number) => {
-    if (num === undefined || isNaN(num)) return 'N/A';
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toLocaleString();
   };
 
   const exportToJSON = (file: UploadFile) => {
@@ -349,7 +171,7 @@ export default function UploadPage() {
     const headers = file.headers;
     const csvContent = [
       headers.join(','),
-      ...rows.map((row: any) => headers.map(h => `"${row[h] ?? ''}"`).join(','))
+      ...rows.map((row: any) => headers.map((h: string) => `"${row[h] ?? ''}"`).join(','))
     ].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -414,14 +236,14 @@ export default function UploadPage() {
           className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
         >
           {[
-            { icon: FileText, label: 'Files', value: completedFiles.length, color: 'indigo' },
-            { icon: Hash, label: 'Total Rows', value: formatNumber(totalRows), color: 'emerald' },
-            { icon: BarChart3, label: 'Columns', value: formatNumber(completedFiles[0]?.headers?.length), color: 'amber' },
-            { icon: Activity, label: 'Status', value: 'Active', color: 'rose' },
+            { icon: FileSpreadsheet, label: 'Files', value: completedFiles.length, color: 'text-indigo-400' },
+            { icon: Hash, label: 'Total Rows', value: totalRows.toLocaleString(), color: 'text-emerald-400' },
+            { icon: BarChart3, label: 'Columns', value: completedFiles[0]?.headers?.length || 0, color: 'text-amber-400' },
+            { icon: CheckCircle2, label: 'Status', value: 'Active', color: 'text-rose-400' },
           ].map((stat, i) => (
             <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
-                <stat.icon className={`w-4 h-4 text-${stat.color}-400`} />
+                <stat.icon className={`w-4 h-4 ${stat.color}`} />
                 <span className="text-slate-400 text-sm">{stat.label}</span>
               </div>
               <p className="text-2xl font-bold text-white">{stat.value}</p>
@@ -470,7 +292,7 @@ export default function UploadPage() {
         </div>
       </motion.div>
 
-      {/* File List with Insights */}
+      {/* File List */}
       <AnimatePresence>
         {files.length > 0 && (
           <motion.div
@@ -498,7 +320,7 @@ export default function UploadPage() {
                     <p className="text-lg font-semibold text-white truncate">{file.name}</p>
                     <div className="flex items-center gap-3 text-sm text-slate-400">
                       <span>{formatFileSize(file.size)}</span>
-                      {file.totalRows && (
+                      {file.totalRows > 0 && (
                         <>
                           <span>|</span>
                           <span>{file.totalRows.toLocaleString()} rows</span>
@@ -529,13 +351,6 @@ export default function UploadPage() {
                         >
                           <Table className="w-5 h-5" />
                         </button>
-                        <button
-                          onClick={() => setExpandedInsights(expandedInsights === file.id ? null : file.id)}
-                          className="p-2 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
-                          title="View Insights"
-                        >
-                          {expandedInsights === file.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </button>
                       </>
                     )}
                     {file.status === 'pending' && (
@@ -555,7 +370,7 @@ export default function UploadPage() {
                     {file.status === 'processing' && (
                       <div className="flex items-center gap-2">
                         <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
-                        <span className="text-sm text-amber-400">AI Processing</span>
+                        <span className="text-sm text-amber-400">Processing</span>
                       </div>
                     )}
                     {file.status === 'completed' && (
@@ -589,9 +404,6 @@ export default function UploadPage() {
                         className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full"
                       />
                     </div>
-                    {file.processingStage && (
-                      <p className="text-xs text-slate-400 mt-2">{file.processingStage}</p>
-                    )}
                   </div>
                 )}
 
@@ -601,90 +413,6 @@ export default function UploadPage() {
                     <p className="text-rose-400 text-sm">{file.error}</p>
                   </div>
                 )}
-
-                {/* Data Insights Panel */}
-                <AnimatePresence>
-                  {expandedInsights === file.id && file.insights && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="border-t border-white/5 overflow-hidden"
-                    >
-                      <div className="p-6 bg-slate-900/50">
-                        {/* Key Metrics */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                          {[
-                            { icon: Hash, label: 'Total Rows', value: formatNumber(file.insights.totalRows), color: 'indigo' },
-                            { icon: BarChart3, label: 'Columns', value: file.insights.totalColumns, color: 'emerald' },
-                            { icon: DollarSign, label: 'Est. Revenue', value: file.insights.estimatedRevenue ? `$${formatNumber(file.insights.estimatedRevenue)}` : 'N/A', color: 'amber' },
-                            { icon: Package, label: 'Products', value: formatNumber(file.insights.estimatedProducts), color: 'rose' },
-                          ].map((metric, i) => (
-                            <div key={i} className="bg-white/5 rounded-xl p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <metric.icon className={`w-4 h-4 text-${metric.color}-400`} />
-                                <span className="text-slate-400 text-xs">{metric.label}</span>
-                              </div>
-                              <p className="text-xl font-bold text-white">{metric.value}</p>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Column Analysis */}
-                        <div className="mb-6">
-                          <h4 className="text-white font-semibold mb-4 flex items-center gap-2">
-                            <Brain className="w-5 h-5 text-indigo-400" />
-                            Column Analysis
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {file.insights.columnInsights.slice(0, 6).map((col, i) => (
-                              <div key={i} className="bg-white/5 rounded-xl p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-white font-medium text-sm truncate">{col.name}</span>
-                                  <span className={`text-xs px-2 py-1 rounded-full ${
-                                    col.type === 'numeric' ? 'bg-emerald-500/20 text-emerald-400' :
-                                    col.type === 'date' ? 'bg-amber-500/20 text-amber-400' :
-                                    col.type === 'category' ? 'bg-violet-500/20 text-violet-400' :
-                                    'bg-slate-500/20 text-slate-400'
-                                  }`}>
-                                    {col.type}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-xs text-slate-400">
-                                  <span>{col.uniqueValues} unique</span>
-                                  {col.nullCount > 0 && <span className="text-rose-400">{col.nullCount} nulls</span>}
-                                </div>
-                                {col.stats && (
-                                  <div className="mt-2 pt-2 border-t border-white/5 text-xs text-slate-500">
-                                    Min: {formatNumber(col.stats.min)} | Max: {formatNumber(col.stats.max)} | Avg: {formatNumber(col.stats.avg)}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Top Categories */}
-                        {file.insights.topCategories && file.insights.topCategories.length > 0 && (
-                          <div>
-                            <h4 className="text-white font-semibold mb-4 flex items-center gap-2">
-                              <Layers className="w-5 h-5 text-violet-400" />
-                              Top Categories
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                              {file.insights.topCategories.map((cat, i) => (
-                                <div key={i} className="bg-violet-500/10 border border-violet-500/20 rounded-lg px-4 py-2">
-                                  <span className="text-violet-400 font-medium">{cat.name}</span>
-                                  <span className="text-violet-400/60 text-sm ml-2">({cat.count})</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </motion.div>
             ))}
 
