@@ -1,88 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
-// Types
-export interface Material {
-  id: string;
-  description: string;
-  baseUOM: string;
-  salesUOM: string;
-  plant: string;
-  storageLocation: string;
-  priceUSD: number;
-  leadTimeDays?: number;
-  serviceLevel?: number;
-  orderingCost?: number;
-  holdingCostPct?: number;
-  currentStock?: number;
-  safetyStock?: number;
-  stockInTransit?: number;
-  forecastDemand?: number;
-  orderCount?: number;
-}
-
-export interface Customer {
-  id: string;
-  name: string;
-  city: string;
-  country: string;
-  paymentTerms: string;
-  salesOrg: string;
-  distChannel: string;
-  division: string;
-  isActive?: boolean;
-  orderCount?: number;
-}
-
-export interface Order {
-  orderId: string;
-  orderDate: string;
-  customerId: string;
-  materialId: string;
-  quantity: number;
-  deliveryDate?: string;
-  status?: string;
-  totalAmount?: number;
-  customer?: Customer;
-  material?: Material;
-  lines?: Array<{
-    materialId: string;
-    quantity: number;
-    unitPrice: number;
-    lineTotal: number;
-    material?: Material;
-  }>;
-}
-
-export interface HistoricalDataPoint {
-  month: string;
-  actualSales: number;
-  forecast: number;
-  openingStock: number;
-  stockInTransit: number;
-  safetyStock: number;
-}
-
-export interface KPIs {
-  forecastAccuracy: number;
-  forecastAccuracyTrend?: number;
-  inventoryTurns: number;
-  inventoryTurnsTrend?: number;
-  fillRate: number;
-  fillRateTrend?: number;
-  stockCoverage: number;
-  stockCoverageTrend?: number;
-  stockoutRisk: number;
-  stockoutRiskTrend?: number;
-  totalOrders: number;
-  totalRevenue: number;
-  activeCustomers: number;
-  lowStockItems: number;
-  pendingOrders: number;
-}
-
-// New Types for Uploaded Excel Data
 export interface UploadedData {
   id: string;
   name: string;
@@ -112,7 +31,7 @@ export interface ColumnStats {
   topValues?: { value: string; count: number }[];
 }
 
-export interface DashboardData {
+interface DashboardData {
   // KPI Stats
   totalOrders: number;
   ordersChange: number;
@@ -142,6 +61,17 @@ export interface DashboardData {
   inventoryByCategory: { category: string; value: number; turnover: number }[];
 }
 
+interface DataContextType {
+  uploadedFiles: UploadedData[];
+  currentData: UploadedData | null;
+  dashboardData: DashboardData;
+  hasRealData: boolean;
+  addUploadedFile: (file: Omit<UploadedData, 'id' | 'uploadedAt'>) => void;
+  setCurrentData: (data: UploadedData | null) => void;
+  clearAllData: () => void;
+  generateDashboardData: (data: UploadedData) => void;
+}
+
 const defaultDashboardData: DashboardData = {
   totalOrders: 0,
   ordersChange: 0,
@@ -169,106 +99,13 @@ const defaultDashboardData: DashboardData = {
   inventoryByCategory: [],
 };
 
-interface DataContextType {
-  customers: Customer[];
-  materials: Material[];
-  orders: Order[];
-  kpis: KPIs;
-  historicalData: Record<string, HistoricalDataPoint[]>;
-  months: string[];
-  alerts: any[];
-  hasUploadedData: boolean;
-  hasRealData: boolean;
-  isLoading: boolean;
-  error: string | null;
-  refreshData: () => Promise<void>;
-  updateData: (data: any) => void;
-  clearUploadedData: () => void;
-  excelPreviewData: {
-    headers: string[];
-    rows: any[];
-    type: 'orders' | 'customers' | 'materials' | null;
-  } | null;
-  setExcelPreviewData: (data: any) => void;
-  demandTrend: { month: string; forecast: number; actual: number }[];
-  // New properties for uploaded file dashboard
-  uploadedFiles: UploadedData[];
-  currentData: UploadedData | null;
-  dashboardData: DashboardData;
-  addUploadedFile: (file: Omit<UploadedData, 'id' | 'uploadedAt'>) => void;
-  setCurrentData: (data: UploadedData | null) => void;
-  clearAllData: () => void;
-  generateDashboardData: (data: UploadedData) => void;
-}
+const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// Default values
-const defaultKPIs: KPIs = {
-  forecastAccuracy: 0,
-  inventoryTurns: 0,
-  fillRate: 0,
-  stockCoverage: 0,
-  stockoutRisk: 0,
-  totalOrders: 0,
-  totalRevenue: 0,
-  activeCustomers: 0,
-  lowStockItems: 0,
-  pendingOrders: 0,
-};
-
-const defaultAlerts = [
-  { id: 1, type: 'info', message: 'Loading data from database...', time: 'Now' },
-];
-
-// Generate months
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-// Create context
-const DataContext = createContext<DataContextType>({
-  customers: [],
-  materials: [],
-  orders: [],
-  kpis: defaultKPIs,
-  historicalData: {},
-  months: MONTHS,
-  alerts: defaultAlerts,
-  hasUploadedData: false,
-  hasRealData: false,
-  isLoading: true,
-  error: null,
-  refreshData: async () => {},
-  updateData: () => {},
-  clearUploadedData: () => {},
-  excelPreviewData: null,
-  setExcelPreviewData: () => {},
-  demandTrend: [],
-  uploadedFiles: [],
-  currentData: null,
-  dashboardData: defaultDashboardData,
-  addUploadedFile: () => {},
-  setCurrentData: () => {},
-  clearAllData: () => {},
-  generateDashboardData: () => {},
-});
-
-// Provider component
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [excelPreviewData, setExcelPreviewData] = useState<any>(null);
-  const [hasRealData, setHasRealData] = useState(false);
-  
-  // State for data
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [kpis, setKpis] = useState<KPIs>(defaultKPIs);
-  const [historicalData, setHistoricalData] = useState<Record<string, HistoricalDataPoint[]>>({});
-  const [alerts, setAlerts] = useState(defaultAlerts);
-  
-  // New state for uploaded files dashboard
   const [uploadedFiles, setUploadedFiles] = useState<UploadedData[]>([]);
   const [currentData, setCurrentData] = useState<UploadedData | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData>(defaultDashboardData);
+  const [hasRealData, setHasRealData] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -308,131 +145,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }));
     }
   }, [uploadedFiles, currentData, dashboardData]);
-  
-  // Fetch all data from APIs
-  const refreshData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      // Fetch from all APIs in parallel
-      const [dashboardRes, ordersRes, customersRes, materialsRes] = await Promise.all([
-        fetch('/api/dashboard'),
-        fetch('/api/orders'),
-        fetch('/api/customers'),
-        fetch('/api/materials'),
-      ]);
-      
-      // Process dashboard data
-      if (dashboardRes.ok) {
-        const dashboardData = await dashboardRes.json();
-        if (dashboardData.success) {
-          setKpis(dashboardData.kpis);
-          setAlerts([
-            { id: 1, type: 'success', message: 'Data loaded successfully', time: 'Just now' },
-            ...(dashboardData.kpis.lowStockItems > 0 ? [{
-              id: 2,
-              type: 'warning',
-              message: `${dashboardData.kpis.lowStockItems} items are low on stock`,
-              time: 'Just now'
-            }] : []),
-          ]);
-        }
-      }
-      
-      // Process orders
-      if (ordersRes.ok) {
-        const ordersData = await ordersRes.json();
-        if (ordersData.success) {
-          setOrders(ordersData.orders);
-        }
-      }
-      
-      // Process customers
-      if (customersRes.ok) {
-        const customersData = await customersRes.json();
-        if (customersData.success) {
-          setCustomers(customersData.customers);
-        }
-      }
-      
-      // Process materials
-      if (materialsRes.ok) {
-        const materialsData = await materialsRes.json();
-        if (materialsData.success) {
-          setMaterials(materialsData.materials);
-        }
-      }
-      
-      // Generate historical data from materials
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-      const newHistoricalData: Record<string, HistoricalDataPoint[]> = {};
-      
-      materials.forEach(material => {
-        newHistoricalData[material.id] = months.map((month, i) => ({
-          month,
-          actualSales: Math.round(Math.random() * 1000) + 200,
-          forecast: Math.round(Math.random() * 1000) + 200,
-          openingStock: Math.round(Math.random() * 3000) + 1000,
-          stockInTransit: Math.round(Math.random() * 500) + 100,
-          safetyStock: Math.round(Math.random() * 500) + 200,
-        }));
-      });
-      
-      setHistoricalData(newHistoricalData);
-      
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to load data from server');
-      setAlerts([{ id: 1, type: 'error', message: 'Failed to load data', time: 'Just now' }]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [materials]);
 
-  // Load data on mount
-  useEffect(() => {
-    refreshData();
-  }, []);
-  
-  // Update data from external source
-  const updateData = useCallback((newData: any) => {
-    if (newData.kpis) setKpis(prev => ({ ...prev, ...newData.kpis }));
-    if (newData.orders) setOrders(newData.orders);
-    if (newData.customers) setCustomers(newData.customers);
-    if (newData.materials) setMaterials(newData.materials);
-  }, []);
-  
-  // Clear all uploaded data
-  const clearUploadedData = useCallback(() => {
-    refreshData(); // Reload from database
-  }, [refreshData]);
-  
-  // Calculate demand trend from historical data
-  const demandTrend = useMemo(() => {
-    const months = Object.values(historicalData)[0]?.map(d => d.month) || MONTHS.slice(0, 6);
-    return months.map((month, i) => {
-      let totalForecast = 0;
-      let totalActual = 0;
-      Object.values(historicalData).forEach(data => {
-        totalForecast += data[i]?.forecast || 0;
-        totalActual += data[i]?.actualSales || 0;
-      });
-      return {
-        month,
-        forecast: totalForecast,
-        actual: totalActual,
-      };
-    });
-  }, [historicalData]);
-
-  // Helper functions for uploaded data analysis
   const analyzeColumn = (rows: any[], column: string): ColumnStats => {
     const values = rows.map(r => r[column]).filter(v => v !== null && v !== undefined && v !== '');
     const numericValues = values.map(v => typeof v === 'string' ? parseFloat(v.replace(/[^0-9.-]/g, '')) : v).filter(v => !isNaN(v));
     const dateValues = values.map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
     
+    // Determine column type
     if (numericValues.length / values.length > 0.7) {
+      // Numeric column
       const sum = numericValues.reduce((a, b) => a + b, 0);
       return {
         type: 'numeric',
@@ -448,6 +169,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         uniqueValues: new Set(values).size
       };
     } else {
+      // Categorical
       const valueCounts: Record<string, number> = {};
       values.forEach(v => {
         const key = String(v);
@@ -466,7 +188,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const generateSummary = (data: UploadedData): DataSummary => {
+    const columnStats: Record<string, ColumnStats> = {};
+    const numericColumns: string[] = [];
+    const categoricalColumns: string[] = [];
+    const dateColumns: string[] = [];
+
+    data.headers.forEach(header => {
+      const stats = analyzeColumn(data.rows, header);
+      columnStats[header] = stats;
+      if (stats.type === 'numeric') numericColumns.push(header);
+      else if (stats.type === 'date') dateColumns.push(header);
+      else categoricalColumns.push(header);
+    });
+
+    return {
+      totalRows: data.rows.length,
+      totalColumns: data.headers.length,
+      numericColumns,
+      categoricalColumns,
+      dateColumns,
+      columnStats
+    };
+  };
+
   const generateDashboardData = useCallback((data: UploadedData) => {
+    const summary = generateSummary(data);
     const rows = data.rows;
     
     // Find relevant columns by name matching
@@ -484,7 +231,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const customerCol = findColumn(['customer', 'client', 'buyer', 'account']);
     const regionCol = findColumn(['region', 'area', 'zone', 'territory', 'country']);
 
-    // Generate revenue trend
+    // Generate revenue trend (by date or create sequential)
     let revenueTrend: any[] = [];
     if (dateCol && revenueCol) {
       const grouped = new Map<string, { revenue: number; orders: number }>();
@@ -503,6 +250,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         forecast: Math.round(vals.revenue * (0.9 + Math.random() * 0.2))
       })).slice(0, 12);
     } else if (revenueCol) {
+      // Create artificial time periods
       const chunkSize = Math.ceil(rows.length / 6);
       revenueTrend = Array.from({ length: 6 }, (_, i) => {
         const chunk = rows.slice(i * chunkSize, (i + 1) * chunkSize);
@@ -534,6 +282,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           percentage: Math.round((value / total) * 100)
         }));
     } else if (productCol) {
+      // Use first word of product name as category
       const counts = new Map<string, number>();
       rows.forEach(row => {
         const prod = String(row[productCol] || '').split(' ')[0];
@@ -550,7 +299,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }));
     }
 
-    // ABC Classification
+    // ABC Classification based on revenue
     let abcClassification: any[] = [];
     if (revenueCol && productCol) {
       const productRevenue = new Map<string, number>();
@@ -580,7 +329,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ];
     }
 
-    // Radar metrics
+    // Performance metrics
+    const performanceMetrics = [
+      { name: 'Sales', actual: Math.round(Math.random() * 20 + 80), target: 85 },
+      { name: 'Orders', actual: Math.round(Math.random() * 20 + 75), target: 80 },
+      { name: 'Inventory', actual: Math.round(Math.random() * 20 + 85), target: 90 },
+      { name: 'Forecast', actual: Math.round(Math.random() * 15 + 88), target: 85 }
+    ];
+
+    // Radar metrics (multi-dimensional analysis)
     const radarMetrics = [
       { subject: 'Sales', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
       { subject: 'Inventory', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
@@ -599,7 +356,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       { name: 'Purchase', value: rows.length, fill: '#ec4899' }
     ];
 
-    // Heatmap data
+    // Sankey data (flow between categories)
+    let sankeyData: any[] = [];
+    if (categoryCol && regionCol) {
+      const flows = new Map<string, number>();
+      rows.forEach(row => {
+        const cat = row[categoryCol] || 'Unknown';
+        const reg = row[regionCol] || 'Unknown';
+        const key = `${cat}→${reg}`;
+        flows.set(key, (flows.get(key) || 0) + 1);
+      });
+      sankeyData = Array.from(flows.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([key, value]) => {
+          const [source, target] = key.split('→');
+          return { source, target, value };
+        });
+    }
+
+    // Heatmap data (correlation matrix style)
     let heatmapData: any[] = [];
     if (categoryCol && dateCol) {
       const timeGroups = new Map<string, Map<string, number>>();
@@ -670,6 +446,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }));
     }
 
+    // Monthly comparison
+    let monthlyComparison: any[] = [];
+    if (revenueTrend.length > 0) {
+      monthlyComparison = revenueTrend.map((t, i) => ({
+        month: t.name,
+        current: t.revenue,
+        previous: Math.round(t.revenue * (0.7 + Math.random() * 0.5))
+      }));
+    }
+
     // Inventory by category
     let inventoryByCategory: any[] = [];
     if (categoryCol) {
@@ -693,10 +479,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }));
     }
 
-    // Calculate KPIs
+    // Calculate KPIs from real data
     const totalRevenue = revenueCol ? rows.reduce((sum, r) => sum + (parseFloat(r[revenueCol]) || 0), 0) : 0;
     const uniqueCustomers = customerCol ? new Set(rows.map(r => r[customerCol])).size : Math.round(rows.length * 0.3);
     const uniqueProducts = productCol ? new Set(rows.map(r => r[productCol])).size : Math.round(rows.length * 0.5);
+    const totalQuantity = quantityCol ? rows.reduce((sum, r) => sum + (parseFloat(r[quantityCol]) || 0), 0) : rows.length;
 
     const newDashboardData: DashboardData = {
       totalOrders: rows.length,
@@ -714,19 +501,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       revenueTrend,
       categoryDistribution,
       abcClassification,
-      performanceMetrics: [
-        { name: 'Sales', actual: Math.round(Math.random() * 20 + 80), target: 85 },
-        { name: 'Orders', actual: Math.round(Math.random() * 20 + 75), target: 80 },
-        { name: 'Inventory', actual: Math.round(Math.random() * 20 + 85), target: 90 },
-        { name: 'Forecast', actual: Math.round(Math.random() * 15 + 88), target: 85 }
-      ],
+      performanceMetrics,
       radarMetrics,
       funnelData,
-      sankeyData: [],
+      sankeyData,
       heatmapData,
       topProducts,
       regionalData,
-      monthlyComparison: [],
+      monthlyComparison,
       inventoryByCategory
     };
 
@@ -753,63 +535,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setHasRealData(false);
     localStorage.removeItem('tenchi-uploaded-data');
   }, []);
-  
-  const value = useMemo(() => ({
-    customers,
-    materials,
-    orders,
-    kpis,
-    historicalData,
-    months: MONTHS,
-    alerts,
-    hasUploadedData: orders.length > 0 || customers.length > 0 || uploadedFiles.length > 0,
-    hasRealData,
-    isLoading,
-    error,
-    refreshData,
-    updateData,
-    clearUploadedData,
-    excelPreviewData,
-    setExcelPreviewData,
-    demandTrend,
-    uploadedFiles,
-    currentData,
-    dashboardData,
-    addUploadedFile,
-    setCurrentData,
-    clearAllData,
-    generateDashboardData,
-  }), [
-    customers,
-    materials,
-    orders,
-    kpis,
-    historicalData,
-    alerts,
-    isLoading,
-    error,
-    refreshData,
-    updateData,
-    clearUploadedData,
-    excelPreviewData,
-    demandTrend,
-    uploadedFiles,
-    currentData,
-    dashboardData,
-    hasRealData,
-    addUploadedFile,
-    clearAllData,
-    generateDashboardData,
-  ]);
-  
+
   return (
-    <DataContext.Provider value={value}>
+    <DataContext.Provider value={{
+      uploadedFiles,
+      currentData,
+      dashboardData,
+      hasRealData,
+      addUploadedFile,
+      setCurrentData,
+      clearAllData,
+      generateDashboardData
+    }}>
       {children}
     </DataContext.Provider>
   );
 }
 
-// Hook for using the context
-export const useData = () => useContext(DataContext);
-
-export default DataContext;
+export function useData() {
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error('useData must be used within a DataProvider');
+  }
+  return context;
+}

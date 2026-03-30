@@ -117,12 +117,15 @@ export default function ForecastingPage() {
   }, []);
 
   // ── Monthly Accuracy Trend ────────────────────────────────────────────────
+  // FIXED: Show static M-1 accuracy based on actuals (not rolling 30 days)
+  // Only show months where we have actual sales data (past months)
   const monthTrend = useMemo(() => {
     return MONTHS.map(month => {
       let totalAcc = 0, totalActual = 0, totalForecast = 0, count = 0;
       MATERIALS.forEach(mat => {
         const history = HISTORICAL_DATA[mat.id] || [];
         const row = history.find((h: any) => h.month === month);
+        // Only calculate for past months where actual sales are available
         if (row && row.actualSales > 0) {
           const acc = calculateForecastAccuracy(row.actualSales, row.forecast);
           totalAcc += acc;
@@ -131,13 +134,16 @@ export default function ForecastingPage() {
           count++;
         }
       });
+      // Only include months that have actual data (exclude current/future months)
+      if (count === 0 || totalActual === 0) return null;
       return {
         month: month.replace(' 2025', '').replace(' 2026', ''),
-        accuracy: count > 0 ? parseFloat((totalAcc / count).toFixed(1)) : null,
+        accuracy: parseFloat((totalAcc / count).toFixed(1)),
         actual: totalActual,
         forecast: totalForecast,
+        isActualMonth: true
       };
-    }).filter(d => d.actual > 0);
+    }).filter(d => d !== null);
   }, []);
 
   // ── Demand Trend (for selected material or all) ───────────────────────────

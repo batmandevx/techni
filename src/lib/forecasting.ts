@@ -330,19 +330,12 @@ export function calculateStockOutGapUnits(forecastDemand: number, availableStock
 }
 
 /**
- * Stock Out Gap (Value) = Stock Out Gap Units × Price per Unit
- */
-export function calculateStockOutGapValue(forecastDemand: number, availableStock: number, priceUSD: number): number {
-  const gap = calculateStockOutGapUnits(forecastDemand, availableStock);
-  return gap * priceUSD;
-}
-
-/**
  * Calculate Stock Gap (Units) - shows 0 if excess stock
  * Formula: max(0, Available Stock - Avg Monthly Sales)
  */
 export function calculateStockGapUnits(availableStock: number, avgMonthlySales: number): number {
   const gap = availableStock - avgMonthlySales;
+  // If available stock exceeds average monthly sales, there's no gap (show 0)
   return Math.max(0, gap);
 }
 
@@ -367,7 +360,10 @@ export function calculateMonthOutOfStock(forecastDemand: number, availableStock:
  * Month Out of Stock (Value) = Forecast Value - Available Stock Value
  */
 export function calculateMonthOutOfStockValue(forecastDemand: number, availableStock: number, priceUSD: number): number {
-  return calculateStockOutGapValue(forecastDemand, availableStock, priceUSD);
+  // Use the new formula that shows 0 for excess stock
+  const gap = availableStock - forecastDemand;
+  if (gap >= 0) return 0;
+  return gap * priceUSD;
 }
 
 /**

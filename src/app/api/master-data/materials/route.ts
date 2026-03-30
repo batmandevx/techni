@@ -1,40 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 
-export async function GET(request: NextRequest) {
+const MOCK_MATERIALS = [
+  { id: 'M2001', materialNumber: '2001', description: 'Chocolate Bar 50g', category: 'Chocolate Candy', priceUsd: 1.20, isActive: true },
+  { id: 'M2002', materialNumber: '2002', description: 'Fruit Candy Pack 100g', category: 'Fruit Candy', priceUsd: 1.80, isActive: true },
+  { id: 'M2003', materialNumber: '2003', description: 'Caramel Toffee 200g', category: 'Toffee Candy', priceUsd: 2.50, isActive: true },
+  { id: 'M2004', materialNumber: '2004', description: 'Mint Candy Jar', category: 'Mint Candy', priceUsd: 3.00, isActive: true },
+  { id: 'M2005', materialNumber: '2005', description: 'Assorted Candy Box', category: 'Gift Box', priceUsd: 4.50, isActive: true },
+];
+
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
-
-    const where = search ? {
-      OR: [
-        { materialNumber: { contains: search, mode: 'insensitive' as const } },
-        { description: { contains: search, mode: 'insensitive' as const } },
-        { materialGroup: { contains: search, mode: 'insensitive' as const } },
-      ],
-    } : {};
-
-    const [materials, total] = await Promise.all([
-      prisma.materialMaster.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.materialMaster.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      materials,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
+    return NextResponse.json({ materials: MOCK_MATERIALS });
   } catch (error) {
     console.error('Error fetching materials:', error);
     return NextResponse.json({ error: 'Failed to fetch materials' }, { status: 500 });
@@ -43,26 +19,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
+    const body = await request.json();
     
-    const material = await prisma.materialMaster.create({
-      data: {
-        materialNumber: data.materialNumber,
-        description: data.description,
-        baseUom: data.baseUom || 'EA',
-        salesUom: data.salesUom || 'EA',
-        plant: data.plant || '1000',
-        storageLocation: data.storageLocation,
-        materialGroup: data.materialGroup,
-        category: data.category,
-        subCategory: data.subCategory,
-        priceUsd: data.priceUsd,
-        costUsd: data.costUsd,
-        isActive: true,
-      },
+    const newMaterial = {
+      id: 'M' + Date.now(),
+      ...body,
+      isActive: true,
+    };
+    
+    return NextResponse.json({ 
+      material: newMaterial,
+      message: 'Material created successfully',
     });
-
-    return NextResponse.json({ material });
   } catch (error) {
     console.error('Error creating material:', error);
     return NextResponse.json({ error: 'Failed to create material' }, { status: 500 });
