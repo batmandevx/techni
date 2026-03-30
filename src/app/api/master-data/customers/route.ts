@@ -1,40 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 
-export async function GET(request: NextRequest) {
+const MOCK_CUSTOMERS = [
+  { id: 'C1001', customerNumber: '1001', companyName: 'Al Noor Trading', country: 'UAE', city: 'Dubai', isActive: true },
+  { id: 'C1002', customerNumber: '1002', companyName: 'Gulf Retail LLC', country: 'UAE', city: 'Abu Dhabi', isActive: true },
+  { id: 'C1003', customerNumber: '1003', companyName: 'Desert Hypermarket', country: 'UAE', city: 'Sharjah', isActive: true },
+  { id: 'C1004', customerNumber: '1004', companyName: 'Oasis Superstores', country: 'Qatar', city: 'Doha', isActive: true },
+  { id: 'C1005', customerNumber: '1005', companyName: 'Arabian Distribution', country: 'KSA', city: 'Riyadh', isActive: true },
+];
+
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
-
-    const where = search ? {
-      OR: [
-        { customerNumber: { contains: search, mode: 'insensitive' as const } },
-        { companyName: { contains: search, mode: 'insensitive' as const } },
-        { city: { contains: search, mode: 'insensitive' as const } },
-      ],
-    } : {};
-
-    const [customers, total] = await Promise.all([
-      prisma.customerMaster.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.customerMaster.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      customers,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
+    return NextResponse.json({ customers: MOCK_CUSTOMERS });
   } catch (error) {
     console.error('Error fetching customers:', error);
     return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 });
@@ -43,27 +19,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
+    const body = await request.json();
     
-    const customer = await prisma.customerMaster.create({
-      data: {
-        customerNumber: data.customerNumber,
-        companyName: data.companyName,
-        salesOrg: data.salesOrg || '1000',
-        distChannel: data.distChannel || '10',
-        division: data.division || '00',
-        paymentTerms: data.paymentTerms || 'NET30',
-        shippingCondition: data.shippingCondition || '01',
-        country: data.country,
-        region: data.region,
-        city: data.city,
-        address: data.address,
-        creditLimit: data.creditLimit,
-        isActive: true,
-      },
+    const newCustomer = {
+      id: 'C' + Date.now(),
+      ...body,
+      isActive: true,
+    };
+    
+    return NextResponse.json({ 
+      customer: newCustomer,
+      message: 'Customer created successfully',
     });
-
-    return NextResponse.json({ customer });
   } catch (error) {
     console.error('Error creating customer:', error);
     return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });

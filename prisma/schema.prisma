@@ -17,22 +17,15 @@ model User {
   email         String    @unique
   name          String
   passwordHash  String?
-  role          UserRole  @default(VIEWER)
+  role          String    @default("VIEWER") // ADMIN, OPERATOR, VIEWER
   avatarUrl     String?
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   // Relations
-  uploads       OrderBatch[]
   auditLogs     AuditLog[]
   chatMessages  ChatMessage[]
-}
-
-enum UserRole {
-  ADMIN
-  OPERATOR
-  VIEWER
 }
 
 // ========================
@@ -52,7 +45,7 @@ model CustomerMaster {
   city              String?
   address           String?
   creditLimit       Float?
-  creditStatus      CreditStatus @default(ACTIVE)
+  creditStatus      String       @default("ACTIVE") // ACTIVE, HOLD, BLOCKED
   isActive          Boolean      @default(true)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
@@ -60,12 +53,6 @@ model CustomerMaster {
   // Relations
   orderBatches      OrderBatch[]
   pricingConditions PricingCondition[]
-}
-
-enum CreditStatus {
-  ACTIVE
-  HOLD
-  BLOCKED
 }
 
 model MaterialMaster {
@@ -112,15 +99,15 @@ model PricingCondition {
 // ORDER PROCESSING
 // ========================
 model OrderBatch {
-  id                  String      @id @default(cuid())
+  id                  String   @id @default(cuid())
   batchName           String
   fileName            String
   fileUrl             String
-  totalOrders         Int         @default(0)
-  successCount        Int         @default(0)
-  failedCount         Int         @default(0)
-  pendingCount        Int         @default(0)
-  status              BatchStatus @default(UPLOADED)
+  totalOrders         Int      @default(0)
+  successCount        Int      @default(0)
+  failedCount         Int      @default(0)
+  pendingCount        Int      @default(0)
+  status              String   @default("UPLOADED") // UPLOADED, VALIDATING, AI_MAPPING, VALIDATED, PROCESSING, COMPLETED, FAILED, PARTIAL_SUCCESS
   aiMappingConfidence Float?
   uploadedBy          String
   mappingConfig       String?     // JSON of column mappings
@@ -134,28 +121,16 @@ model OrderBatch {
   auditLogs        AuditLog[]
   customerMaster   CustomerMaster? @relation(fields: [customerMasterId], references: [id])
   customerMasterId String?
-  user             User            @relation(fields: [uploadedBy], references: [id])
-}
-
-enum BatchStatus {
-  UPLOADED
-  VALIDATING
-  AI_MAPPING
-  VALIDATED
-  PROCESSING
-  COMPLETED
-  FAILED
-  PARTIAL_SUCCESS
 }
 
 model OrderLine {
-  id                    String     @id @default(cuid())
+  id                    String   @id @default(cuid())
   batchId               String
   rowIndex              Int
-  orderType             String     @default("OR")
-  salesOrg              String     @default("1000")
-  distChannel           String     @default("10")
-  division              String     @default("00")
+  orderType             String   @default("OR")
+  salesOrg              String   @default("1000")
+  distChannel           String   @default("10")
+  division              String   @default("00")
   soldTo                String
   shipTo                String
   material              String
@@ -163,14 +138,14 @@ model OrderLine {
   unitPrice             Float?
   lineTotal             Float?
   requestedDeliveryDate DateTime?
-  plant                 String     @default("1000")
+  plant                 String   @default("1000")
   poNumber              String?
-  currency              String     @default("USD")
+  currency              String   @default("USD")
   
   // SAP Integration
   sapOrderNumber   String?
   sapItemNumber    String?
-  status           LineStatus @default(PENDING)
+  status           String @default("PENDING") // PENDING, VALIDATING, VALID, INVALID, PROCESSING, CREATED, FAILED
   validationErrors String?    // JSON array
   sapResponse      String?    // JSON object
   retryCount       Int        @default(0)
@@ -182,16 +157,6 @@ model OrderLine {
   // Relations
   batch    OrderBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
   materialMaster MaterialMaster? @relation(fields: [material], references: [materialNumber])
-}
-
-enum LineStatus {
-  PENDING
-  VALIDATING
-  VALID
-  INVALID
-  PROCESSING
-  CREATED
-  FAILED
 }
 
 // ========================
@@ -246,9 +211,9 @@ model DailyMetric {
 }
 
 model SavedReport {
-  id          String     @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
-  type        ReportType
+  type        String   // ABC_ANALYSIS, INVENTORY_HEALTH, ORDER_SUMMARY, FORECAST_ACCURACY, CUSTOMER_PERFORMANCE, MATERIAL_PERFORMANCE, PROCESSING_SUMMARY
   description String?
   filters     String?    // JSON
   config      String?    // JSON
@@ -256,14 +221,4 @@ model SavedReport {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   lastRunAt   DateTime?
-}
-
-enum ReportType {
-  ABC_ANALYSIS
-  INVENTORY_HEALTH
-  ORDER_SUMMARY
-  FORECAST_ACCURACY
-  CUSTOMER_PERFORMANCE
-  MATERIAL_PERFORMANCE
-  PROCESSING_SUMMARY
 }

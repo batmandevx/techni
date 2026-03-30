@@ -6,8 +6,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Upload, BarChart3, Package, Settings,
-  Truck, Boxes, FileText, Sparkles, ChevronLeft, ChevronRight,
-  Menu, X, Activity, LogOut, User, Brain
+  Truck, Layers, FileText, Sparkles, ChevronLeft, ChevronRight,
+  Menu, X, Activity, LogOut, User, Brain, Zap, ShoppingCart, Cog
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,9 +22,11 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/abc-dashboard', label: 'ABC Analysis', icon: BarChart3 },
   { path: '/forecasting', label: 'Forecasting', icon: Activity },
-  { path: '/orders', label: 'Orders', icon: Package, badge: 0 },
+  { path: '/optimizer', label: 'Order Optimizer', icon: Zap },
+  { path: '/orders', label: 'Orders', icon: ShoppingCart, badge: 0 },
   { path: '/containers', label: 'Containers', icon: Truck },
-  { path: '/production', label: 'Production', icon: Boxes },
+  { path: '/production', label: 'Production', icon: Cog },
+  { path: '/kitting', label: 'Kitting', icon: Layers },
   { path: '/upload', label: 'Data Upload', icon: Upload },
   { path: '/ai-assistant', label: 'AI Assistant', icon: Brain },
   { path: '/reports', label: 'Reports', icon: FileText },
