@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import LayoutClient from "./layout-client";
 
@@ -35,9 +36,11 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased" style={{ background: '#080d1a' }}>
-        <LayoutClient>
-          {children}
-        </LayoutClient>
+        <ClerkProvider>
+          <LayoutClient>
+            {children}
+          </LayoutClient>
+        </ClerkProvider>
       </body>
     </html>
   );

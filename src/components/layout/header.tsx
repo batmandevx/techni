@@ -10,13 +10,9 @@ import {
   AlertCircle,
   Info,
   X,
-  LogOut,
-  User,
-  ChevronDown,
-  Shield,
 } from 'lucide-react';
+import { Show, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -40,10 +36,8 @@ const MOCK_NOTIFICATIONS: Notification[] = [
 
 export function Header({ onMenuClick, pageTitle, pageSubtitle }: HeaderProps) {
   const [notifOpen, setNotifOpen] = useState(false);
-  const [userOpen, setUserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -163,51 +157,32 @@ export function Header({ onMenuClick, pageTitle, pageSubtitle }: HeaderProps) {
           </AnimatePresence>
         </div>
 
-        {/* User Menu */}
-        <div className="relative">
-          <button
-            onClick={() => { setUserOpen(!userOpen); setNotifOpen(false); }}
-            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-xl hover:bg-white/5 transition-all"
-          >
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-              <span className="text-[10px] font-bold text-white">AU</span>
-            </div>
-            <span className="hidden sm:block text-xs font-medium text-slate-300">Admin</span>
-            <ChevronDown className="w-3 h-3 text-slate-500" />
-          </button>
-          <AnimatePresence>
-            {userOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                className="absolute right-0 top-full mt-2 w-52 rounded-2xl overflow-hidden z-50 shadow-2xl bg-[#111827] border border-white/8"
-              >
-                <div className="px-4 py-3 border-b border-white/6">
-                  <p className="text-sm font-semibold text-white">Admin User</p>
-                  <p className="text-xs text-slate-500">admin@tenchione.com</p>
-                  <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-indigo-300 rounded-full px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20">
-                    <Shield className="w-2.5 h-2.5" /> Administrator
-                  </div>
-                </div>
-                <Link href="/settings" onClick={() => setUserOpen(false)}>
-                  <div className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors cursor-pointer">
-                    <User className="w-4 h-4 text-slate-500" />
-                    Profile Settings
-                  </div>
-                </Link>
-                <div className="border-t border-white/6">
-                  <button
-                    onClick={() => { router.push('/auth'); setUserOpen(false); }}
-                    className="flex items-center gap-3 px-4 py-2.5 w-full text-sm text-rose-400 hover:bg-rose-500/8 transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Sign Out
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Clerk Auth */}
+        <div className="flex items-center gap-2">
+          <Show when="signed-out">
+            <Link
+              href="/auth"
+              className="hidden sm:block px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/auth?mode=sign-up"
+              className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-500/80 hover:bg-indigo-500 rounded-xl transition-all"
+            >
+              Sign Up
+            </Link>
+          </Show>
+          <Show when="signed-in">
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: 'w-7 h-7 rounded-full ring-2 ring-white/10',
+                  userButtonTrigger: 'flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-white/5 transition-all',
+                },
+              }}
+            />
+          </Show>
         </div>
       </div>
 

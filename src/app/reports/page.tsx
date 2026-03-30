@@ -23,8 +23,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useData } from '@/lib/DataContext';
-import { processInventoryRecord, calculateEOQ, calculateReorderPoint } from '@/lib/forecasting';
-import { MATERIALS, HISTORICAL_DATA } from '@/lib/mock-data';
+import { processInventoryRecord } from '@/lib/forecasting';
 import toast from 'react-hot-toast';
 
 // Report types configuration

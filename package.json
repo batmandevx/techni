@@ -20,7 +20,7 @@
     "db:setup": "prisma generate && prisma migrate dev --name init && npm run db:seed"
   },
   "dependencies": {
-    "@clerk/nextjs": "^5.7.5",
+    "@clerk/nextjs": "^7.0.7",
     "@google/generative-ai": "^0.21.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@react-three/drei": "^9.122.0",

@@ -12,7 +12,7 @@ import {
   ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
-import { MATERIALS, HISTORICAL_DATA, MONTHS } from '@/lib/mock-data';
+import { useData } from '@/lib/DataContext';
 import { calculateForecastAccuracy } from '@/lib/forecasting';
 import Link from 'next/link';
 
@@ -96,14 +96,15 @@ function ChartCard({ title, sub, children, action, delay = 0, className = '' }: 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ForecastingPage() {
+  const { materials, historicalData, months, hasUploadedData } = useData();
   const [selectedMaterial, setSelectedMaterial] = useState('all');
   const [forecastMethod, setForecastMethod] = useState('moving-average');
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
     let totalAcc = 0, count = 0, above90 = 0, below80 = 0;
-    MATERIALS.forEach(mat => {
-      const history = HISTORICAL_DATA[mat.id] || [];
+    materials.forEach(mat => {
+      const history = historicalData[mat.id] || [];
       history.forEach((h: any) => {
         if (h.actualSales > 0) {
           const acc = calculateForecastAccuracy(h.actualSales, h.forecast);
@@ -114,14 +115,14 @@ export default function ForecastingPage() {
       });
     });
     return { overall: count > 0 ? Math.round((totalAcc / count) * 10) / 10 : 0, above90, below80, total: count };
-  }, []);
+  }, [materials, historicalData]);
 
   // ── Monthly Accuracy Trend ────────────────────────────────────────────────
   const monthTrend = useMemo(() => {
-    return MONTHS.map(month => {
+    return months.map(month => {
       let totalAcc = 0, totalActual = 0, totalForecast = 0, count = 0;
-      MATERIALS.forEach(mat => {
-        const history = HISTORICAL_DATA[mat.id] || [];
+      materials.forEach(mat => {
+        const history = historicalData[mat.id] || [];
         const row = history.find((h: any) => h.month === month);
         if (row && row.actualSales > 0) {
           const acc = calculateForecastAccuracy(row.actualSales, row.forecast);
@@ -138,15 +139,15 @@ export default function ForecastingPage() {
         forecast: totalForecast,
       };
     }).filter(d => d.actual > 0);
-  }, []);
+  }, [materials, historicalData, months]);
 
   // ── Demand Trend (for selected material or all) ───────────────────────────
   const demandTrend = useMemo(() => {
-    return MONTHS.map(month => {
+    return months.map(month => {
       let actual = 0, forecast = 0;
-      const mats = selectedMaterial === 'all' ? MATERIALS : MATERIALS.filter(m => m.id === selectedMaterial);
+      const mats = selectedMaterial === 'all' ? materials : materials.filter(m => m.id === selectedMaterial);
       mats.forEach(mat => {
-        const row = (HISTORICAL_DATA[mat.id] || []).find((h: any) => h.month === month);
+        const row = (historicalData[mat.id] || []).find((h: any) => h.month === month);
         if (row) { actual += row.actualSales || 0; forecast += row.forecast || 0; }
       });
 
@@ -162,27 +163,27 @@ export default function ForecastingPage() {
         forecast: adjustedForecast,
       };
     });
-  }, [selectedMaterial, forecastMethod]);
+  }, [selectedMaterial, forecastMethod, materials, historicalData, months]);
 
   // ── SKU-level accuracy ────────────────────────────────────────────────────
   const skuAccuracy = useMemo(() => {
-    return MATERIALS.map(mat => {
+    return materials.map(mat => {
       let totalAcc = 0, count = 0;
-      (HISTORICAL_DATA[mat.id] || []).forEach((h: any) => {
+      (historicalData[mat.id] || []).forEach((h: any) => {
         if (h.actualSales > 0) { totalAcc += calculateForecastAccuracy(h.actualSales, h.forecast); count++; }
       });
       const acc = count > 0 ? parseFloat((totalAcc / count).toFixed(1)) : 0;
       return { id: mat.id, name: mat.description.split(' ').slice(0, 3).join(' '), accuracy: acc, category: mat.category };
     }).sort((a, b) => b.accuracy - a.accuracy);
-  }, []);
+  }, [materials, historicalData]);
 
   // ── Category accuracy ─────────────────────────────────────────────────────
   const catAccuracy = useMemo(() => {
     const map: Record<string, { total: number; count: number }> = {};
-    MATERIALS.forEach(mat => {
+    materials.forEach(mat => {
       const cat = mat.category || 'Other';
       if (!map[cat]) map[cat] = { total: 0, count: 0 };
-      (HISTORICAL_DATA[mat.id] || []).forEach((h: any) => {
+      (historicalData[mat.id] || []).forEach((h: any) => {
         if (h.actualSales > 0) {
           map[cat].total += calculateForecastAccuracy(h.actualSales, h.forecast);
           map[cat].count++;
@@ -196,11 +197,31 @@ export default function ForecastingPage() {
       }))
       .filter(c => c.accuracy > 0)
       .sort((a, b) => b.accuracy - a.accuracy);
-  }, []);
+  }, [materials, historicalData]);
 
   const AXIS = '#475569';
   const GRID = 'rgba(255,255,255,0.04)';
   const SKUCOLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#ef4444', '#14b8a6'];
+
+  if (!hasUploadedData || materials.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-5 lg:p-7"
+        style={{ background: 'linear-gradient(135deg, #0a0f1e 0%, #0d1528 50%, #0a1520 100%)' }}>
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md text-center">
+          <div className="w-16 h-16 mx-auto mb-6 bg-slate-800/50 rounded-2xl flex items-center justify-center border border-white/5 shadow-xl">
+            <BarChart3 className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">No Data Available</h2>
+          <p className="text-slate-400 mb-8">Please upload an Excel or CSV file to view the forecasting intelligence dashboard.</p>
+          <Link href="/upload">
+            <button className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-medium transition-colors">
+              Upload Data File
+            </button>
+          </Link>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-5 lg:p-7"
@@ -217,7 +238,7 @@ export default function ForecastingPage() {
               <span className="text-xs font-semibold uppercase tracking-widest text-indigo-400">Demand Planning</span>
             </div>
             <h1 className="text-2xl font-bold text-white">Forecasting Intelligence</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Month-wise (M-1) forecast accuracy · {MATERIALS.length} active SKUs</p>
+            <p className="text-sm text-slate-500 mt-0.5">Month-wise (M-1) forecast accuracy · {materials.length} active SKUs</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Forecast method selector */}

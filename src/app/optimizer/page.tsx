@@ -5,9 +5,10 @@ import { motion } from 'framer-motion';
 import { 
   Calculator, TrendingUp, Package, DollarSign, 
   AlertCircle, CheckCircle2, ArrowRight, Download,
-  Settings, Sparkles, BarChart3, Target, Zap
+  Settings, Sparkles, BarChart3, Target, Zap, Upload
 } from 'lucide-react';
-import { MATERIALS, HISTORICAL_DATA } from '@/lib/mock-data';
+import Link from 'next/link';
+import { useData } from '@/lib/DataContext';
 import { 
   calculateReplenishment, 
   calculateStockCoverageMonths,
@@ -17,15 +18,15 @@ import {
 } from '@/lib/forecasting';
 
 // Calculate order prompts for all materials
-const calculateOrderPrompts = () => {
-  return MATERIALS.map(mat => {
-    const history = HISTORICAL_DATA[mat.id] || [];
+const calculateOrderPrompts = (materials: any[], historicalData: any, safetyStockMultiplier: number) => {
+  return materials.map(mat => {
+    const history = historicalData[mat.id] || [];
     const latest = history[history.length - 1] || {
-      openingStock: 1000,
-      stockInTransit: 200,
-      actualSales: 500,
-      forecast: 550,
-      safetyStock: 300
+      openingStock: 0,
+      stockInTransit: 0,
+      actualSales: 0,
+      forecast: 0,
+      safetyStock: 0
     };
     
     const closingStock = calculateClosingStock(latest.openingStock, latest.stockInTransit, latest.actualSales);
@@ -33,8 +34,9 @@ const calculateOrderPrompts = () => {
     const coverageMonths = calculateStockCoverageMonths(closingStock, avgMonthlySales);
     
     // Calculate order prompt (replenishment)
-    const orderPromptQty = calculateReplenishment(latest.forecast, latest.safetyStock, closingStock);
-    const orderPromptValue = orderPromptQty * mat.priceUSD;
+    const adjustedSafetyStock = latest.safetyStock * safetyStockMultiplier;
+    const orderPromptQty = calculateReplenishment(latest.forecast, adjustedSafetyStock, closingStock);
+    const orderPromptValue = orderPromptQty * (mat.priceUSD || 10);
     
     // Determine priority
     let priority: 'high' | 'medium' | 'low' = 'low';
@@ -44,14 +46,14 @@ const calculateOrderPrompts = () => {
     return {
       sku: mat.id,
       name: mat.description,
-      category: mat.category,
+      category: mat.category || 'Uncategorized',
       currentStock: closingStock,
-      safetyStock: latest.safetyStock,
+      safetyStock: adjustedSafetyStock,
       avgMonthlySales,
       coverageMonths,
       orderPromptQty,
       orderPromptValue,
-      unitPrice: mat.priceUSD,
+      unitPrice: mat.priceUSD || 10,
       priority,
       inTransit: latest.stockInTransit
     };
@@ -80,10 +82,11 @@ const KPICard = ({ title, value, subtitle, icon: Icon, color }: any) => (
 );
 
 export default function OrderOptimizerPage() {
+  const { materials, historicalData, hasUploadedData } = useData();
   const [safetyStockMultiplier, setSafetyStockMultiplier] = useState(1.0);
   const [showSettings, setShowSettings] = useState(false);
   
-  const orderPrompts = useMemo(() => calculateOrderPrompts(), []);
+  const orderPrompts = useMemo(() => calculateOrderPrompts(materials, historicalData, safetyStockMultiplier), [materials, historicalData, safetyStockMultiplier]);
   
   // Calculate totals
   const totals = useMemo(() => {
@@ -134,6 +137,26 @@ export default function OrderOptimizerPage() {
     a.download = `order_prompts_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
+
+  if (!hasUploadedData || materials.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-5 lg:p-7"
+        style={{ background: 'linear-gradient(135deg, #0a0f1e 0%, #0d1528 50%, #0a1520 100%)' }}>
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md text-center">
+          <div className="w-16 h-16 mx-auto mb-6 bg-slate-800/50 rounded-2xl flex items-center justify-center border border-white/5 shadow-xl">
+            <Calculator className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">No Data Available</h2>
+          <p className="text-slate-400 mb-8">Please upload an Excel or CSV file to view the order optimizer.</p>
+          <Link href="/upload">
+            <button className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-medium transition-colors">
+              Upload Data File
+            </button>
+          </Link>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8">
