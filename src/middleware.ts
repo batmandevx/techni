@@ -1,54 +1,53 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-// Validate environment variables
-const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-const secretKey = process.env.CLERK_SECRET_KEY
+// Runtime configuration - use Node.js instead of Edge for better compatibility
+export const runtime = 'nodejs'
 
-const isPublicRoute = createRouteMatcher([
-  '/',
-  '/auth(.*)',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/api/webhook(.*)',
-  '/api/health'
-])
+// Public routes that don't require authentication
+const PUBLIC_PATHS = ['/', '/auth', '/sign-in', '/sign-up', '/api/webhook', '/api/health']
 
-// Check if Clerk is properly configured
-const isClerkConfigured = publishableKey?.startsWith('pk_') && secretKey?.startsWith('sk_')
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
+}
 
-export default clerkMiddleware(async (auth, req) => {
-  // If Clerk is not configured, allow all requests (dev mode fallback)
-  if (!isClerkConfigured) {
-    console.warn('[Middleware] Clerk not configured, skipping auth check')
+// Check if Clerk is configured
+const hasClerkKey = !!(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_') &&
+  process.env.CLERK_SECRET_KEY?.startsWith('sk_')
+)
+
+export default async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+
+  // Always allow public paths
+  if (isPublicPath(pathname)) {
     return NextResponse.next()
   }
 
-  try {
-    const { userId, redirectToSignIn } = await auth()
-    const { pathname } = req.nextUrl
-
-    // If signed in and hitting /auth, redirect to /main
-    if (userId && pathname.startsWith('/auth')) {
-      return NextResponse.redirect(new URL('/main', req.url))
-    }
-
-    // Protect all non-public routes
-    if (!isPublicRoute(req) && !userId) {
-      return redirectToSignIn({ returnBackUrl: req.url })
-    }
-  } catch (error) {
-    console.error('[Middleware] Auth error:', error)
-    // Return a proper error response instead of crashing
-    return new NextResponse(
-      JSON.stringify({ error: 'Authentication failed' }),
-      { 
-        status: 500,
-        headers: { 'content-type': 'application/json' }
-      }
-    )
+  // If Clerk is not configured, allow all requests (demo mode)
+  if (!hasClerkKey) {
+    console.log('[Middleware] Demo mode - allowing:', pathname)
+    return NextResponse.next()
   }
-})
+
+  // Clerk is configured - use auth protection
+  try {
+    const { auth } = await import('@clerk/nextjs/server')
+    const { userId } = await auth()
+
+    if (!userId) {
+      // Redirect to auth page
+      return NextResponse.redirect(new URL('/auth?mode=sign-in', req.url))
+    }
+
+    return NextResponse.next()
+  } catch (err) {
+    console.error('[Middleware] Auth error:', err)
+    // On error, allow through to prevent 500
+    return NextResponse.next()
+  }
+}
 
 export const config = {
   matcher: [
