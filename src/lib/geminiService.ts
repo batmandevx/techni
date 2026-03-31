@@ -30,7 +30,8 @@ CRITICAL INSTRUCTIONS:
 4. If the user asks a question and the exact answer isn't in the data, calculate it from the data provided (e.g., sums, averages, percentages) and state your calculation.
 5. Only say "data not available" if the uploaded context truly lacks the necessary columns/values.
 6. Use markdown tables for comparisons and lists.
-7. Be concise but specific. Start with the direct answer, then add 1-2 sentences of insight.`;
+7. Be concise but specific. Start with the direct answer, then add 1-2 sentences of insight.
+8. MULTILINGUAL SUPPORT: You must detect the user's language (e.g., Arabic, English, Spanish) and respond in the EXACT same language. If the user speaks Arabic, provide a natural-sounding, high-quality Arabic response with proper formatting.`;
 
 // Build context from uploaded data
 function buildDataContext(context: SOPDataContext): string {

@@ -416,7 +416,7 @@ If the problem persists, please check that your data is properly formatted.`,
                         : 'bg-white/5 border border-white/10 text-slate-200 rounded-bl-md'
                     }`}>
                       <div className="prose prose-sm max-w-none prose-invert">
-                        <div className="whitespace-pre-line text-sm leading-relaxed">
+                        <div className="whitespace-pre-line text-sm leading-relaxed" dir="auto">
                           {message.content.split('\n').map((line, i) => {
                             // Handle headers
                             if (line.startsWith('## ')) {
@@ -517,6 +517,7 @@ If the problem persists, please check that your data is properly formatted.`,
                   rows={1}
                   className="w-full px-4 py-3.5 pr-12 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 outline-none focus:border-indigo-500/40 focus:bg-white/[0.07] transition-all resize-none min-h-[50px] max-h-[150px]"
                   style={{ height: 'auto' }}
+                  dir="auto"
                 />
                 <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               </div>

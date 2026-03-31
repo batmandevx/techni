@@ -64,7 +64,17 @@ export default function UploadPage() {
       status: 'pending',
       progress: 0,
     }));
-    setFiles(prev => [...prev, ...uploadFiles]);
+    
+    setFiles(prev => {
+      const allFiles = [...prev, ...uploadFiles];
+      return allFiles;
+    });
+
+    // Auto-process files immediately
+    uploadFiles.forEach(f => {
+      // Small timeout to allow state to settle
+      setTimeout(() => uploadFile(f), 100);
+    });
   };
 
   const removeFile = (id: string) => {
