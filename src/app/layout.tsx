@@ -8,12 +8,17 @@ export const metadata: Metadata = {
   description: "AI-powered Sales and Operations Planning platform for intelligent demand forecasting and inventory optimization",
 };
 
+// Check if Clerk is configured
+const isClerkConfigured = 
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_') &&
+  process.env.CLERK_SECRET_KEY?.startsWith('sk_');
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
+  const content = (
     <html lang="en" suppressHydrationWarning>
       <head>
         <script
@@ -36,12 +41,23 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased" style={{ background: '#080d1a' }}>
-        <ClerkProvider>
-          <LayoutClient>
-            {children}
-          </LayoutClient>
-        </ClerkProvider>
+        <LayoutClient>
+          {children}
+        </LayoutClient>
       </body>
     </html>
   );
+
+  // Only wrap with ClerkProvider if properly configured
+  if (isClerkConfigured) {
+    return (
+      <ClerkProvider>
+        {content}
+      </ClerkProvider>
+    );
+  }
+
+  // Fallback without auth
+  console.warn('[Layout] Clerk not configured, running without authentication');
+  return content;
 }

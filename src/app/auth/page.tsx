@@ -4,11 +4,22 @@ import { Suspense, lazy } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, Package, TrendingUp, Globe, Shield, Zap, CheckCircle2 } from 'lucide-react';
-import { SignIn, SignUp } from '@clerk/nextjs';
 import Link from 'next/link';
 
 // Lazy-load Spline (heavy) with no SSR
 const Spline = lazy(() => import('@splinetool/react-spline'));
+
+// Dynamically import Clerk components to avoid errors when not configured
+let SignIn: React.ComponentType<any> | null = null;
+let SignUp: React.ComponentType<any> | null = null;
+
+try {
+  const clerk = require('@clerk/nextjs');
+  SignIn = clerk.SignIn;
+  SignUp = clerk.SignUp;
+} catch (e) {
+  console.warn('Clerk not available');
+}
 
 const features = [
   { icon: Package, title: 'Smart Inventory', description: 'ABC analysis with AI-powered insights' },
@@ -62,9 +73,36 @@ const clerkAppearance = {
   },
 };
 
+// Simple fallback auth form when Clerk is not configured
+function FallbackAuth({ mode }: { mode: string }) {
+  return (
+    <div className="text-center py-8">
+      <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
+        <Zap className="w-8 h-8 text-amber-400" />
+      </div>
+      <h3 className="text-xl font-bold text-white mb-2">
+        {mode === 'sign-in' ? 'Welcome Back' : 'Get Started'}
+      </h3>
+      <p className="text-slate-400 text-sm mb-6">
+        Authentication is currently in demo mode.
+      </p>
+      <Link
+        href="/main"
+        className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-[0_0_20px_rgba(99,102,241,0.35)] transition-all"
+      >
+        Continue to Dashboard <TrendingUp className="w-4 h-4" />
+      </Link>
+      <p className="text-slate-500 text-xs mt-4">
+        No login required for demo access
+      </p>
+    </div>
+  );
+}
+
 export default function AuthPage() {
   const searchParams = useSearchParams();
   const mode = searchParams.get('mode') || 'sign-in';
+  const isClerkConfigured = !!SignIn && !!SignUp;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-black flex items-center justify-center">
@@ -242,18 +280,24 @@ export default function AuthPage() {
             />
 
             <div className="relative z-10 p-7 sm:p-9">
-              {mode === 'sign-in' ? (
-                <SignIn
-                  routing="hash"
-                  signUpUrl="/auth?mode=sign-up"
-                  appearance={clerkAppearance}
-                />
+              {isClerkConfigured && SignIn && SignUp ? (
+                mode === 'sign-in' ? (
+                  <SignIn
+                    routing="hash"
+                    forceRedirectUrl="/main"
+                    signUpUrl="/auth?mode=sign-up"
+                    appearance={clerkAppearance}
+                  />
+                ) : (
+                  <SignUp
+                    routing="hash"
+                    forceRedirectUrl="/main"
+                    signInUrl="/auth?mode=sign-in"
+                    appearance={clerkAppearance}
+                  />
+                )
               ) : (
-                <SignUp
-                  routing="hash"
-                  signInUrl="/auth?mode=sign-in"
-                  appearance={clerkAppearance}
-                />
+                <FallbackAuth mode={mode} />
               )}
             </div>
           </div>

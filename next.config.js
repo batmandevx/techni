@@ -8,8 +8,8 @@ const nextConfig = {
     domains: ['localhost'],
     unoptimized: process.env.NODE_ENV === 'development',
   },
-  // Enable static optimization for pages that don't use server-side data
-  output: 'standalone',
+  // Output configuration - use 'standalone' for Docker, default for Vercel
+  output: process.env.VERCEL ? undefined : 'standalone',
   // Configure build output
   distDir: '.next',
   // Cache configuration
