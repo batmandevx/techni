@@ -15,7 +15,7 @@ import Link from 'next/link';
 
 const WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
-  role: 'assistant',
+  role: 'model',
   content: `**Welcome to Tenchi AI Assistant!**
 
 I'm powered by **Gemini 3 Flash** and can analyze your S&OP data to answer complex business questions.
@@ -149,7 +149,7 @@ export default function AIAssistantPage() {
 
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: 'model',
         content: response,
         timestamp: new Date(),
       };
@@ -159,7 +159,7 @@ export default function AIAssistantPage() {
       console.error('AI Error:', error);
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: 'model',
         content: `I apologize, but I encountered an error processing your request. 
 
 **Error:** ${error instanceof Error ? error.message : 'Unknown error'}
