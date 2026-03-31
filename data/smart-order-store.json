@@ -1,0 +1,544 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "customerSyncAt": "2026-03-30T02:50:01.867Z",
+    "materialSyncAt": "2026-03-30T02:50:01.867Z",
+    "pricingSyncAt": "2026-03-30T02:50:01.867Z",
+    "lastUpdatedAt": "2026-03-31T02:50:01.867Z"
+  },
+  "users": [
+    {
+      "id": "usr_admin",
+      "email": "admin@tenchi.consulting",
+      "name": "Ava Tenchi",
+      "role": "ADMIN",
+      "isActive": true
+    },
+    {
+      "id": "usr_ops",
+      "email": "ops@tenchi.consulting",
+      "name": "Rohan Mehta",
+      "role": "OPERATOR",
+      "isActive": true
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust_100234",
+      "customerNumber": "100234",
+      "companyName": "Acme Retail USA",
+      "salesOrg": "1000",
+      "distChannel": "10",
+      "division": "00",
+      "paymentTerms": "N30",
+      "shippingCondition": "01",
+      "country": "United States",
+      "region": "California",
+      "city": "Los Angeles",
+      "isActive": true,
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "cust_100235",
+      "customerNumber": "100235",
+      "companyName": "BlueYonder Wholesale",
+      "salesOrg": "1000",
+      "distChannel": "10",
+      "division": "00",
+      "paymentTerms": "N45",
+      "shippingCondition": "02",
+      "country": "United States",
+      "region": "Texas",
+      "city": "Dallas",
+      "isActive": true,
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "cust_200145",
+      "customerNumber": "200145",
+      "companyName": "Nordic Market Group",
+      "salesOrg": "2000",
+      "distChannel": "20",
+      "division": "00",
+      "paymentTerms": "N30",
+      "shippingCondition": "01",
+      "country": "Germany",
+      "region": "Berlin",
+      "city": "Berlin",
+      "isActive": true,
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "cust_300889",
+      "customerNumber": "300889",
+      "companyName": "Pacific Foods Asia",
+      "salesOrg": "3000",
+      "distChannel": "30",
+      "division": "00",
+      "paymentTerms": "ADV",
+      "shippingCondition": "03",
+      "country": "Singapore",
+      "region": "Central",
+      "city": "Singapore",
+      "isActive": true,
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "cust_400102",
+      "customerNumber": "400102",
+      "companyName": "Tenchi Demo Customer",
+      "salesOrg": "1000",
+      "distChannel": "10",
+      "division": "00",
+      "paymentTerms": "N15",
+      "shippingCondition": "01",
+      "country": "United States",
+      "region": "Illinois",
+      "city": "Chicago",
+      "isActive": true,
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    }
+  ],
+  "materials": [
+    {
+      "id": "mat_45000123",
+      "materialNumber": "45000123",
+      "description": "Sparkling Water 12-Pack",
+      "baseUom": "EA",
+      "salesUom": "EA",
+      "plant": "1000",
+      "storageLocation": "FG01",
+      "materialGroup": "BEVERAGE",
+      "isActive": true,
+      "availableQty": 3200,
+      "category": "Beverages",
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "mat_45000124",
+      "materialNumber": "45000124",
+      "description": "Organic Juice 6-Pack",
+      "baseUom": "EA",
+      "salesUom": "EA",
+      "plant": "1000",
+      "storageLocation": "FG01",
+      "materialGroup": "BEVERAGE",
+      "isActive": true,
+      "availableQty": 1800,
+      "category": "Beverages",
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "mat_55000210",
+      "materialNumber": "55000210",
+      "description": "Granola Bites",
+      "baseUom": "EA",
+      "salesUom": "EA",
+      "plant": "1000",
+      "storageLocation": "FG02",
+      "materialGroup": "SNACKS",
+      "isActive": true,
+      "availableQty": 750,
+      "category": "Snacks",
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "mat_55000211",
+      "materialNumber": "55000211",
+      "description": "Protein Crunch Bars",
+      "baseUom": "EA",
+      "salesUom": "EA",
+      "plant": "1000",
+      "storageLocation": "FG02",
+      "materialGroup": "SNACKS",
+      "isActive": true,
+      "availableQty": 460,
+      "category": "Snacks",
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    },
+    {
+      "id": "mat_65000889",
+      "materialNumber": "65000889",
+      "description": "Instant Coffee Sachets",
+      "baseUom": "EA",
+      "salesUom": "EA",
+      "plant": "3000",
+      "storageLocation": "FG03",
+      "materialGroup": "GROCERY",
+      "isActive": true,
+      "availableQty": 5100,
+      "category": "Grocery",
+      "lastSyncAt": "2026-03-30T02:50:01.867Z"
+    }
+  ],
+  "pricing": [
+    {
+      "id": "pr_1",
+      "conditionType": "PR00",
+      "materialNumber": "45000123",
+      "customerNumber": "100234",
+      "salesOrg": "1000",
+      "amount": 5.5,
+      "currency": "USD",
+      "validFrom": "2026-03-01T02:50:01.867Z",
+      "validTo": "2026-06-29T02:50:01.867Z"
+    },
+    {
+      "id": "pr_2",
+      "conditionType": "PR00",
+      "materialNumber": "45000124",
+      "customerNumber": "100234",
+      "salesOrg": "1000",
+      "amount": 6.1,
+      "currency": "USD",
+      "validFrom": "2026-03-01T02:50:01.867Z",
+      "validTo": "2026-06-29T02:50:01.867Z"
+    },
+    {
+      "id": "pr_3",
+      "conditionType": "PR00",
+      "materialNumber": "55000210",
+      "customerNumber": "100235",
+      "salesOrg": "1000",
+      "amount": 3.75,
+      "currency": "USD",
+      "validFrom": "2026-03-01T02:50:01.867Z",
+      "validTo": "2026-06-29T02:50:01.867Z"
+    },
+    {
+      "id": "pr_4",
+      "conditionType": "K004",
+      "materialNumber": "55000210",
+      "customerNumber": "100235",
+      "salesOrg": "1000",
+      "amount": -0.25,
+      "currency": "USD",
+      "validFrom": "2026-03-21T02:50:01.867Z",
+      "validTo": "2026-05-15T02:50:01.867Z"
+    },
+    {
+      "id": "pr_5",
+      "conditionType": "MWST",
+      "materialNumber": "65000889",
+      "customerNumber": "300889",
+      "salesOrg": "3000",
+      "amount": 0.18,
+      "currency": "USD",
+      "validFrom": "2026-03-01T02:50:01.867Z",
+      "validTo": "2026-06-29T02:50:01.867Z"
+    },
+    {
+      "id": "pr_6",
+      "conditionType": "KF00",
+      "materialNumber": "45000123",
+      "customerNumber": "400102",
+      "salesOrg": "1000",
+      "amount": 125,
+      "currency": "USD",
+      "validFrom": "2026-03-16T02:50:01.867Z",
+      "validTo": "2026-05-30T02:50:01.867Z"
+    }
+  ],
+  "batches": [
+    {
+      "id": "batch_demo_completed",
+      "batchName": "Morning Retail Upload",
+      "fileName": "march-orders-acme.xlsx",
+      "fileUrl": "/uploads/march-orders-acme.xlsx",
+      "totalOrders": 3,
+      "successCount": 2,
+      "failedCount": 1,
+      "pendingCount": 0,
+      "status": "PARTIAL_SUCCESS",
+      "aiMappingConfidence": 0.93,
+      "uploadedBy": "usr_ops",
+      "createdAt": "2026-03-29T02:50:01.867Z",
+      "updatedAt": "2026-03-29T02:50:01.867Z",
+      "mappingConfig": {
+        "provider": "heuristic",
+        "overallConfidence": 0.93,
+        "warnings": [],
+        "unmappedColumns": [],
+        "mappings": [
+          {
+            "sourceColumn": "SoldTo",
+            "targetField": "SOLD_TO",
+            "confidence": 0.98,
+            "rationale": "Exact alias match."
+          },
+          {
+            "sourceColumn": "Material",
+            "targetField": "MATERIAL",
+            "confidence": 0.98,
+            "rationale": "Exact alias match."
+          },
+          {
+            "sourceColumn": "Qty",
+            "targetField": "QTY",
+            "confidence": 0.95,
+            "rationale": "Common SAP quantity alias."
+          },
+          {
+            "sourceColumn": "ReqDate",
+            "targetField": "REQ_DEL_DATE",
+            "confidence": 0.9,
+            "rationale": "Date alias detected."
+          }
+        ]
+      },
+      "filePreview": [
+        {
+          "SoldTo": "100234",
+          "Material": "45000123",
+          "Qty": 120,
+          "ReqDate": "2026-03-25"
+        },
+        {
+          "SoldTo": "100235",
+          "Material": "55000210",
+          "Qty": 80,
+          "ReqDate": "2026-03-26"
+        }
+      ],
+      "lines": [
+        {
+          "id": "line_demo_1",
+          "rowIndex": 1,
+          "orderType": "OR",
+          "salesOrg": "1000",
+          "distChannel": "10",
+          "division": "00",
+          "soldTo": "100234",
+          "shipTo": "100234",
+          "material": "45000123",
+          "quantity": 120,
+          "price": 5.5,
+          "requestedDeliveryDate": "2026-04-06T02:50:01.867Z",
+          "plant": "1000",
+          "currency": "USD",
+          "sapOrderNumber": "0000012345",
+          "sapItemNumber": "000010",
+          "status": "CREATED",
+          "validationErrors": [],
+          "warnings": [],
+          "sapResponse": {
+            "success": true,
+            "orderNumber": "0000012345"
+          },
+          "retryCount": 0,
+          "processingDurationMs": 980
+        },
+        {
+          "id": "line_demo_2",
+          "rowIndex": 2,
+          "orderType": "OR",
+          "salesOrg": "1000",
+          "distChannel": "10",
+          "division": "00",
+          "soldTo": "100234",
+          "shipTo": "100234",
+          "material": "45000124",
+          "quantity": 60,
+          "price": 6.1,
+          "requestedDeliveryDate": "2026-04-06T02:50:01.867Z",
+          "plant": "1000",
+          "currency": "USD",
+          "sapOrderNumber": "0000012345",
+          "sapItemNumber": "000020",
+          "status": "CREATED",
+          "validationErrors": [],
+          "warnings": [],
+          "sapResponse": {
+            "success": true,
+            "orderNumber": "0000012345"
+          },
+          "retryCount": 0,
+          "processingDurationMs": 980
+        },
+        {
+          "id": "line_demo_3",
+          "rowIndex": 3,
+          "orderType": "OR",
+          "salesOrg": "1000",
+          "distChannel": "10",
+          "division": "00",
+          "soldTo": "100235",
+          "shipTo": "100235",
+          "material": "55000211",
+          "quantity": 900,
+          "price": 4.4,
+          "requestedDeliveryDate": "2026-04-04T02:50:01.867Z",
+          "plant": "1000",
+          "currency": "USD",
+          "sapOrderNumber": null,
+          "sapItemNumber": null,
+          "status": "FAILED",
+          "validationErrors": [
+            "Availability check failed for material 55000211 at plant 1000."
+          ],
+          "warnings": [
+            "Requested quantity exceeds available stock."
+          ],
+          "sapResponse": {
+            "success": false,
+            "errors": [
+              "Insufficient stock at supplying plant"
+            ]
+          },
+          "retryCount": 1,
+          "processingDurationMs": 1300
+        }
+      ],
+      "report": {
+        "startedAt": "2026-03-29T02:50:01.867Z",
+        "completedAt": "2026-03-29T02:50:01.867Z",
+        "progressPercent": 100,
+        "createdGroups": 1,
+        "failedGroups": 1,
+        "averageProcessingTimeMs": 1140,
+        "message": "1 customer order created, 1 customer group failed availability validation."
+      }
+    },
+    {
+      "id": "batch_demo_validated",
+      "batchName": "E-Commerce Intake",
+      "fileName": "daily-portal-feed.csv",
+      "fileUrl": "/uploads/daily-portal-feed.csv",
+      "totalOrders": 2,
+      "successCount": 0,
+      "failedCount": 0,
+      "pendingCount": 2,
+      "status": "VALIDATED",
+      "aiMappingConfidence": 0.88,
+      "uploadedBy": "usr_admin",
+      "createdAt": "2026-03-30T02:50:01.867Z",
+      "updatedAt": "2026-03-30T02:50:01.867Z",
+      "mappingConfig": {
+        "provider": "heuristic",
+        "overallConfidence": 0.88,
+        "warnings": [
+          "Column Customer Code was mapped to SOLD_TO with medium confidence."
+        ],
+        "unmappedColumns": [
+          "Comments"
+        ],
+        "mappings": [
+          {
+            "sourceColumn": "Customer Code",
+            "targetField": "SOLD_TO",
+            "confidence": 0.8,
+            "rationale": "Alias similarity."
+          },
+          {
+            "sourceColumn": "SKU",
+            "targetField": "MATERIAL",
+            "confidence": 0.96,
+            "rationale": "Known material alias."
+          },
+          {
+            "sourceColumn": "Quantity",
+            "targetField": "QTY",
+            "confidence": 0.98,
+            "rationale": "Exact semantic match."
+          },
+          {
+            "sourceColumn": "Delivery",
+            "targetField": "REQ_DEL_DATE",
+            "confidence": 0.88,
+            "rationale": "Date header similarity."
+          }
+        ]
+      },
+      "filePreview": [
+        {
+          "Customer Code": "400102",
+          "SKU": "45000123",
+          "Quantity": 42,
+          "Delivery": "2026-03-29"
+        },
+        {
+          "Customer Code": "300889",
+          "SKU": "65000889",
+          "Quantity": 200,
+          "Delivery": "2026-03-31"
+        }
+      ],
+      "lines": [
+        {
+          "id": "line_demo_4",
+          "rowIndex": 1,
+          "orderType": "OR",
+          "salesOrg": "1000",
+          "distChannel": "10",
+          "division": "00",
+          "soldTo": "400102",
+          "shipTo": "400102",
+          "material": "45000123",
+          "quantity": 42,
+          "price": 5.5,
+          "requestedDeliveryDate": "2026-04-08T02:50:01.867Z",
+          "plant": "1000",
+          "currency": "USD",
+          "status": "VALID",
+          "validationErrors": [],
+          "warnings": [],
+          "retryCount": 0
+        },
+        {
+          "id": "line_demo_5",
+          "rowIndex": 2,
+          "orderType": "OR",
+          "salesOrg": "3000",
+          "distChannel": "30",
+          "division": "00",
+          "soldTo": "300889",
+          "shipTo": "300889",
+          "material": "65000889",
+          "quantity": 200,
+          "price": 7.95,
+          "requestedDeliveryDate": "2026-04-10T02:50:01.867Z",
+          "plant": "3000",
+          "currency": "USD",
+          "status": "VALID",
+          "validationErrors": [],
+          "warnings": [
+            "Currency defaulted to USD because source file omitted a currency column."
+          ],
+          "retryCount": 0
+        }
+      ],
+      "report": {
+        "progressPercent": 0,
+        "createdGroups": 0,
+        "failedGroups": 0,
+        "averageProcessingTimeMs": 0,
+        "message": "Ready for SAP processing."
+      }
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "audit_1",
+      "userId": "usr_ops",
+      "action": "UPLOAD",
+      "entityType": "OrderBatch",
+      "entityId": "batch_demo_completed",
+      "details": {
+        "fileName": "march-orders-acme.xlsx"
+      },
+      "createdAt": "2026-03-29T02:50:01.867Z"
+    },
+    {
+      "id": "audit_2",
+      "userId": "usr_admin",
+      "action": "VALIDATE",
+      "entityType": "OrderBatch",
+      "entityId": "batch_demo_validated",
+      "details": {
+        "validRows": 2,
+        "invalidRows": 0
+      },
+      "createdAt": "2026-03-30T02:50:01.867Z"
+    }
+  ]
+}

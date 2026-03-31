@@ -13,6 +13,7 @@ export interface ParsedMaterial {
   avgMonthlySales: number;
   currentStock: number;
   price: number;
+  forecastUnits: number;
 }
 
 export interface MonthlyTrend {
@@ -46,6 +47,8 @@ export interface UploadedData {
     avgCoverage: number;
     forecastAccuracy: number;
     totalOrders: number;
+    totalInventoryUnits: number;
+    totalInventoryValue: number;
   };
 }
 
@@ -109,8 +112,15 @@ function parsePivot(headers: string[], rows: any[]) {
     const description = descCol ? String(row[descCol] || id).trim() : id;
     const stockCol = headers.find(isStockCol);
     const currentStock = stockCol ? toNum(row[stockCol]) : 0;
+    
+    let forecastUnits = 0;
+    if (forecastMonthCols.length > 0) {
+      forecastUnits = toNum(row[forecastMonthCols[forecastMonthCols.length - 1]]);
+    } else {
+      forecastUnits = Math.round(avgMonthlySales * 1.05);
+    }
 
-    materials.push({ id, description, category, monthlySales, monthNames: actualMonthCols.map(normalizeMonth), totalSales, avgMonthlySales, currentStock, price });
+    materials.push({ id, description, category, monthlySales, monthNames: actualMonthCols.map(normalizeMonth), totalSales, avgMonthlySales, currentStock, price, forecastUnits });
     categoryMap[category] = (categoryMap[category] || 0) + totalSales;
   }
 
@@ -175,7 +185,7 @@ function parseFlat(headers: string[], rows: any[]) {
     id, description: d.description, category: d.category,
     monthlySales: [], monthNames: [],
     totalSales: d.totalSales, avgMonthlySales: d.totalSales / numMonths,
-    currentStock: 0, price: d.price,
+    currentStock: 0, price: d.price, forecastUnits: Math.round((d.totalSales / numMonths) * 1.08)
   }));
 
   const monthlyTrend: MonthlyTrend[] = Object.entries(monthMap).map(([month, d]) => ({
@@ -209,8 +219,11 @@ function parseStock(headers: string[], rows: any[]) {
     const category = catCol ? String(row[catCol] || 'Other').trim() : 'General';
     const description = descCol ? String(row[descCol] || id).trim() : id;
     const currentStock = openingCol ? toNum(row[openingCol]) : 0;
+    
+    const forecastCol = headers.find(h => /forecast|planned/i.test(h));
+    const forecastUnits = forecastCol ? toNum(row[forecastCol]) : 0;
 
-    materials.push({ id, description, category, monthlySales: [actualSales], monthNames: ['Current'], totalSales: actualSales, avgMonthlySales: actualSales, currentStock, price });
+    materials.push({ id, description, category, monthlySales: [actualSales], monthNames: ['Current'], totalSales: actualSales, avgMonthlySales: actualSales, currentStock, price, forecastUnits });
     categoryMap[category] = (categoryMap[category] || 0) + actualSales;
   }
 
@@ -274,15 +287,21 @@ export function parseUploadedData(fileName: string, headers: string[], rows: any
   const totalOrders = monthlyTrend.reduce((s, m) => s + m.orders, 0) || rows.length;
   const coverages = materials.filter(m => m.avgMonthlySales > 0).map(m => m.currentStock / m.avgMonthlySales);
   const avgCoverage = coverages.length > 0 ? coverages.reduce((a, b) => a + b, 0) / coverages.length : 0;
+  
+  const totalInventoryUnits = materials.reduce((s, m) => s + (m.currentStock || 0), 0);
+  const totalInventoryValue = materials.reduce((s, m) => s + (m.currentStock || 0) * Math.max(m.price, 1), 0);
+  
   const monthsWithBoth = monthlyTrend.filter(m => m.actual > 0 && m.forecast > 0);
-  const forecastAccuracy = monthsWithBoth.length > 0
-    ? Math.min(100, Math.max(0, monthsWithBoth.reduce((s, m) => s + (1 - Math.abs(m.actual - m.forecast) / m.actual), 0) / monthsWithBoth.length * 100))
-    : 0;
+  let forecastAccuracy = 0;
+  if (monthsWithBoth.length > 0) {
+    const lastMonth = monthsWithBoth[monthsWithBoth.length - 1];
+    forecastAccuracy = Math.max(0, (1 - Math.abs(lastMonth.actual - lastMonth.forecast) / lastMonth.actual) * 100);
+  }
 
   const data: UploadedData = {
     fileName, uploadedAt: new Date().toISOString(), totalRows: rows.length, detectedFormat: fmt, headers,
     materials, monthlyTrend, topCategories, abcDistribution, performanceData, radarData, radarKeys,
-    kpis: { totalSKUs: materials.length, totalRevenue, avgCoverage, forecastAccuracy, totalOrders },
+    kpis: { totalSKUs: materials.length, totalRevenue, avgCoverage, forecastAccuracy, totalOrders, totalInventoryUnits, totalInventoryValue },
   };
 
   return data;

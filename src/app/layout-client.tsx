@@ -27,9 +27,17 @@ const PAGE_TITLES: Record<string, { title: string; sub: string }> = {
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(true); // Default true to prevent hydration mismatch margin jumps
   const pathname = usePathname();
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    handleResize(); // Initial check
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Auth pages render without layout
   if (pathname?.startsWith('/auth') || pathname?.startsWith('/sign-in') || pathname?.startsWith('/sign-up')) {
@@ -65,10 +73,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
         <motion.div
           initial={false}
-          animate={{ marginLeft: collapsed ? 72 : 260 }}
+          animate={{ marginLeft: isMobile ? 0 : (collapsed ? 72 : 260) }}
           transition={{ type: 'spring', stiffness: 280, damping: 28 }}
           className="flex-1 flex flex-col min-w-0"
-          style={{ marginLeft: 260 }}
         >
           <Header
             onMenuClick={() => setMobileOpen(true)}

@@ -323,29 +323,20 @@ export function calculateForecastAccuracy(actual: number, forecast: number): num
 
 /**
  * Stock Out Gap (Units) = Forecast Units - Available Stock Units
- * Positive value means shortage, negative means surplus
+ * Positive value means shortage, negative means surplus.
+ * We use max(0, gap) to show 0 instead of negative.
  */
 export function calculateStockOutGapUnits(forecastDemand: number, availableStock: number): number {
-  return forecastDemand - availableStock;
+  return Math.max(0, forecastDemand - availableStock);
 }
 
-/**
- * Calculate Stock Gap (Units) - shows 0 if excess stock
- * Formula: max(0, Available Stock - Avg Monthly Sales)
- */
 export function calculateStockGapUnits(availableStock: number, avgMonthlySales: number): number {
-  const gap = availableStock - avgMonthlySales;
-  // If available stock exceeds average monthly sales, there's no gap (show 0)
-  return Math.max(0, gap);
+  // Legacy function for backward compatibility
+  return Math.max(0, availableStock - avgMonthlySales);
 }
 
-/**
- * Calculate Stock Gap (Value) - shows 0 if excess stock
- * Formula: max(0, (Available Stock - Avg Monthly Sales) × Price)
- */
 export function calculateStockGapValue(availableStock: number, avgMonthlySales: number, priceUSD: number): number {
-  const gapUnits = calculateStockGapUnits(availableStock, avgMonthlySales);
-  return gapUnits * priceUSD;
+  return calculateStockGapUnits(availableStock, avgMonthlySales) * priceUSD;
 }
 
 /**
@@ -360,10 +351,8 @@ export function calculateMonthOutOfStock(forecastDemand: number, availableStock:
  * Month Out of Stock (Value) = Forecast Value - Available Stock Value
  */
 export function calculateMonthOutOfStockValue(forecastDemand: number, availableStock: number, priceUSD: number): number {
-  // Use the new formula that shows 0 for excess stock
-  const gap = availableStock - forecastDemand;
-  if (gap >= 0) return 0;
-  return gap * priceUSD;
+  const gap = forecastDemand - availableStock;
+  return Math.max(0, gap) * priceUSD;
 }
 
 /**
@@ -493,13 +482,16 @@ export function performABCAnalysis(materials: MaterialForABC[]): ABCAnalysisResu
       const actuals = mat.historicalSales.filter(s => s > 0);
       const forecasts = mat.historicalForecasts.slice(0, actuals.length);
       if (actuals.length > 0 && forecasts.length > 0) {
-        forecastAccuracy = 100 - calculateMAPE(actuals, forecasts);
+        // Use the last month's actual and forecast (Static M-1)
+        const lastActual = actuals[actuals.length - 1];
+        const lastForecast = forecasts[forecasts.length - 1];
+        forecastAccuracy = calculateForecastAccuracy(lastActual, lastForecast);
       }
     }
 
-    // Calculate stock gap using new formula (shows 0 if excess stock)
-    const stockGapUnits = calculateStockGapUnits(mat.currentStock, avgMonthlySales);
-    const stockGapValue = calculateStockGapValue(mat.currentStock, avgMonthlySales, mat.priceUSD);
+    // Calculate stock out gap using new formula: max(0, Forecast - Available Stock)
+    const stockGapUnits = Math.max(0, (mat.forecastDemand || 0) - mat.currentStock);
+    const stockGapValue = stockGapUnits * mat.priceUSD;
 
     // Calculate stock value
     const stockValue = mat.currentStock * mat.priceUSD;

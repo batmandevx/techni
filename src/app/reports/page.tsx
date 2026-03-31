@@ -25,6 +25,9 @@ import {
 import { useData } from '@/lib/DataContext';
 import { processInventoryRecord } from '@/lib/forecasting';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Report types configuration
 const REPORT_TYPES = [
@@ -68,9 +71,6 @@ export default function ReportsPage() {
   const generatePDF = async () => {
     setGenerating('pdf');
     try {
-      const jsPDF = (await import('jspdf')).default;
-      const { default: autoTable } = await import('jspdf-autotable');
-
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -232,7 +232,6 @@ export default function ReportsPage() {
   const generateExcel = async () => {
     setGenerating('excel');
     try {
-      const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
 
       // KPIs Sheet
@@ -557,7 +556,7 @@ export default function ReportsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-            onClick={(e) => {
+            onMouseDown={(e) => {
               if (e.target === e.currentTarget) setShowEmailModal(false);
             }}
           >

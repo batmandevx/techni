@@ -221,8 +221,7 @@ export async function parseExcelFile(file: File): Promise<ParsedExcel> {
   try {
     // Use ArrayBuffer which works in both browser and Node.js environments
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
 
     // Get the first sheet with data
     const sheetName = workbook.SheetNames[0];

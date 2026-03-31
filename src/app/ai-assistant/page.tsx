@@ -211,7 +211,7 @@ If the problem persists, please check that your data is properly formatted.`,
   };
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[#080d1a]">
+    <div className="h-[calc(100dvh-3.5rem)] flex flex-col bg-[#080d1a]">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/6 bg-[#080d1a]/80 backdrop-blur">
         <div className="flex items-center gap-3">

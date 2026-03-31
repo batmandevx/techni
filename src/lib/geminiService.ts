@@ -3,8 +3,7 @@
 import { DataSummary, UploadedData, DashboardData } from './DataContext';
 import { getUploadedData, UploadedData as StoreUploadedData } from './uploadDataStore';
 
-const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GEMINI_API_URL = '/api/gemini';
 
 export interface ChatMessage {
   id?: string;
@@ -311,7 +310,22 @@ export async function generateGeminiResponse(
       return 'No data has been uploaded yet. Please upload an Excel or CSV file first.';
     }
 
-    const prompt = `${SOP_SYSTEM_PROMPT}
+    const validHistory = chatHistory.filter(msg => msg.id !== 'welcome');
+    
+    let formattedHistory = validHistory.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }]
+    }));
+
+    // Ensure alternating roles (API requirement)
+    // If the last message in history is a 'user', and we are about to append another 'user',
+    // we should combine them or drop the previous user message, but normally history alternates.
+    if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
+      // Remove the last pending user message from history if there was no model response
+      formattedHistory.pop();
+    }
+
+    const currentPrompt = `${SOP_SYSTEM_PROMPT}
 
 ${dataContext}
 
@@ -319,18 +333,21 @@ USER QUESTION: ${userMessage}
 
 IMPORTANT: Answer using ONLY the data above. Cite specific numbers and names from the dataset.`;
 
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const contents = [
+      ...formattedHistory,
+      {
+        role: 'user',
+        parts: [{ text: currentPrompt }]
+      }
+    ];
+
+    const response = await fetch(GEMINI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ],
+        contents,
         generationConfig: {
           temperature: 0.2,
           maxOutputTokens: 4096,
@@ -569,7 +586,7 @@ Try asking about revenue, targets, forecasts, or upload a file with material/SKU
 
 // Check if API key is configured
 export function isGeminiConfigured(): boolean {
-  return !!GEMINI_API_KEY && GEMINI_API_KEY.length > 10;
+  return true; // Config validation now happens server-side
 }
 
 export default {

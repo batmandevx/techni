@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calculator, TrendingUp, Package, DollarSign, 
   AlertCircle, CheckCircle2, ArrowRight, Download,
@@ -390,5 +390,4 @@ export default function OrderOptimizerPage() {
   );
 }
 
-// Required for AnimatePresence
-import { AnimatePresence } from 'framer-motion';
+

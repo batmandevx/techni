@@ -399,7 +399,7 @@ export default function DashboardPage() {
       ? Math.round(uploadedData.kpis.forecastAccuracy * 10) / 10
       : 87.5,
     accuracyChange: 2.8,
-    inventoryValue: 68.4,
+    inventoryValue: uploadedData?.kpis.totalInventoryValue || 68400000,
     inventoryChange: -4.2,
   };
 

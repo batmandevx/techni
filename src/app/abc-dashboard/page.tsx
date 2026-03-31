@@ -7,7 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, Download, Filter, Settings,
   BarChart3, Activity, Sparkles, Search, X, ShieldAlert,
   DollarSign, Grid3X3, Layers, Info, RefreshCw,
-  TrendingDown, Zap, ChevronRight, Target
+  TrendingDown, Zap, ChevronRight, Target, Eye
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useData } from '@/lib/DataContext';
@@ -135,7 +135,7 @@ function AgeConfigModal({ isOpen, onClose, config, onSave }: {
   );
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, color, onClick }: any) {
+function StatCard({ title, value, subtitle, icon: Icon, color, onClick, tooltip }: any) {
   const colorClasses = {
     emerald: 'from-emerald-500 to-teal-600 shadow-emerald-500/30',
     amber: 'from-amber-500 to-orange-600 shadow-amber-500/30',
@@ -148,6 +148,7 @@ function StatCard({ title, value, subtitle, icon: Icon, color, onClick }: any) {
       variants={itemVariants}
       whileHover={{ y: -8, transition: { duration: 0.2 } }}
       onClick={onClick}
+      title={tooltip}
       className={`relative ${onClick ? 'cursor-pointer' : ''}`}
     >
       <div className={`absolute -inset-0.5 bg-gradient-to-r ${colorClasses[color as keyof typeof colorClasses]} rounded-2xl opacity-0 hover:opacity-30 blur transition duration-500`} />
@@ -165,6 +166,11 @@ function StatCard({ title, value, subtitle, icon: Icon, color, onClick }: any) {
             </div>
           </div>
         </div>
+        {onClick && (
+          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-[10px] text-slate-500">Click for details</span>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -172,13 +178,13 @@ function StatCard({ title, value, subtitle, icon: Icon, color, onClick }: any) {
 
 function StatusBadge({ status }: { status: 'good' | 'slow' | 'bad' }) {
   const config = {
-    good: { color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', label: 'Good', icon: CheckCircle2 },
-    slow: { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20', label: 'Slow', icon: Activity },
-    bad: { color: 'bg-rose-500/10 text-rose-400 border-rose-500/20', label: 'Bad', icon: AlertCircle },
+    good: { color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', label: 'Healthy', icon: CheckCircle2, tooltip: 'Healthy inventory status' },
+    slow: { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20', label: 'Action for Sales', icon: Activity, tooltip: 'Action required from Sales team' },
+    bad: { color: 'bg-rose-500/10 text-rose-400 border-rose-500/20', label: 'Action for Provision', icon: AlertCircle, tooltip: 'Action required for provision/write-off' },
   };
-  const { color, label, icon: Icon } = config[status];
+  const { color, label, icon: Icon, tooltip } = config[status];
   return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${color}`}>
+    <span title={tooltip} className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${color}`}>
       <Icon className="w-3 h-3 mr-1" />
       {label}
     </span>
@@ -202,6 +208,7 @@ export default function ABCDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ category: 'all', abcClass: 'all', status: 'all', search: '' });
   const [showAgeConfig, setShowAgeConfig] = useState(false);
+  const [showLowCoverageModal, setShowLowCoverageModal] = useState(false);
   const [ageConfig, setAgeConfig] = useState<InventoryAgeMasterConfig>(getInventoryAgeMasterConfig());
   const [uploadedData, setUploadedData] = useState<UploadedData | null>(null);
   const { materials, historicalData, hasUploadedData } = useData();
@@ -279,21 +286,41 @@ export default function ABCDashboardPage() {
 
   const totals = useMemo(() => filteredResults.reduce((acc, item) => ({
     stockValue: acc.stockValue + item.stockValue,
-    stockGapValue: acc.stockGapValue + item.stockGapValue,
+    stockGapValue: acc.stockGapValue + Math.max(0, item.stockGapValue),
+    stockGapUnits: acc.stockGapUnits + Math.max(0, item.stockGapUnits),
     count: acc.count + 1,
-  }), { stockValue: 0, stockGapValue: 0, count: 0 }), [filteredResults]);
+  }), { stockValue: 0, stockGapValue: 0, stockGapUnits: 0, count: 0 }), [filteredResults]);
 
   const handleExportExcel = () => {
     const exportData = filteredResults.map(item => ({
-      'SKU': item.materialId,
+      'SKU Number': item.materialId,
       'Description': item.materialName,
       'Category': item.category,
-      'ABC': item.classification,
-      'Coverage': item.stockCoverageMonths,
-      'Stock Value': item.stockValue,
-      'Gap (Units)': item.stockGapUnits,
-      'Status': item.inventoryAgeStatus,
+      'ABC Classification': item.classification,
+      'Stock Value ($)': item.stockValue,
+      'Coverage (Months)': item.stockCoverageMonths,
+      'Avg Monthly Sales': item.avgMonthlySales,
+      'Gap (Units)': Math.max(0, item.stockGapUnits),
+      'Gap Value ($)': Math.max(0, item.stockGapValue),
+      'Inventory Status': item.inventoryAgeStatus === 'good' ? 'Healthy' : item.inventoryAgeStatus === 'slow' ? 'Action for Sales' : 'Action for Provision',
+      'Sales Value Contribution (%)': item.salesValueContribution,
     }));
+    
+    // Add summary row
+    exportData.push({
+      'SKU Number': 'TOTAL',
+      'Description': `${filteredResults.length} items`,
+      'Category': '-',
+      'ABC Classification': '-' as any,
+      'Stock Value ($)': totals.stockValue,
+      'Coverage (Months)': 0,
+      'Avg Monthly Sales': 0,
+      'Gap (Units)': totals.stockGapUnits,
+      'Gap Value ($)': Math.max(0, totals.stockGapValue),
+      'Inventory Status': '-',
+      'Sales Value Contribution (%)': 100,
+    });
+    
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'ABC Analysis');
@@ -350,10 +377,18 @@ export default function ABCDashboardPage() {
 
         {/* KPI Cards */}
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Class A Items" value={summary.a.count} subtitle="High value" icon={Layers} color="emerald" />
-          <StatCard title="Class B Items" value={summary.b.count} subtitle="Medium value" icon={Layers} color="amber" />
-          <StatCard title="Class C Items" value={summary.c.count} subtitle="Low value" icon={Layers} color="slate" />
-          <StatCard title="Low Coverage" value={summary.lowCoverage.count} subtitle="Need attention" icon={AlertCircle} color="rose" />
+          <StatCard title="Class A Items" value={summary.a.count} subtitle="High value" icon={Layers} color="emerald" onClick={() => setFilters({ ...filters, abcClass: 'A' })} tooltip="Click to filter items by Class A" />
+          <StatCard title="Class B Items" value={summary.b.count} subtitle="Medium value" icon={Layers} color="amber" onClick={() => setFilters({ ...filters, abcClass: 'B' })} tooltip="Click to filter items by Class B" />
+          <StatCard title="Class C Items" value={summary.c.count} subtitle="Low value" icon={Layers} color="slate" onClick={() => setFilters({ ...filters, abcClass: 'C' })} tooltip="Click to filter items by Class C" />
+          <StatCard 
+            title="Low Coverage" 
+            value={summary.lowCoverage.count} 
+            subtitle="Click to view details" 
+            icon={AlertCircle} 
+            color="rose" 
+            onClick={() => summary.lowCoverage.count > 0 && setShowLowCoverageModal(true)}
+            tooltip={summary.lowCoverage.count > 0 ? "Click to view SKU details" : "No low coverage items"}
+          />
         </motion.div>
 
         {/* Charts Row */}
@@ -418,27 +453,38 @@ export default function ABCDashboardPage() {
               <h3 className="font-semibold text-white">ABC Analysis Results</h3>
               <span className="text-xs text-slate-500 bg-white/5 px-2 py-1 rounded-full">{filteredResults.length} items</span>
             </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search SKU, name..."
-                value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                className="pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500/50 w-full sm:w-64"
-              />
+            <div className="flex items-center gap-2">
+              {filters.abcClass !== 'all' && (
+                <button 
+                  onClick={() => setFilters({ ...filters, abcClass: 'all' })}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 transition-colors border border-indigo-500/30"
+                >
+                  Class {filters.abcClass} <X className="w-3 h-3" />
+                </button>
+              )}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search SKU, name..."
+                  value={filters.search}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  className="pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-500/50 w-full sm:w-64"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Total Row */}
-          <div className="bg-indigo-500/10 border-b border-indigo-500/20 px-4 py-3">
-            <div className="grid grid-cols-12 gap-4 text-sm">
-              <div className="col-span-2 font-semibold text-indigo-400">TOTAL ({totals.count})</div>
-              <div className="col-span-3"></div>
+          {/* Total Row - Updates with filters */}
+          <div className="bg-gradient-to-r from-indigo-500/20 to-violet-500/10 border-b border-indigo-500/30 px-4 py-3">
+            <div className="grid grid-cols-12 gap-4 text-sm items-center">
+              <div className="col-span-2 font-bold text-indigo-300">TOTAL ({totals.count})</div>
+              <div className="col-span-3 text-indigo-400 text-xs">Filtered Results</div>
+              <div className="col-span-1 text-center font-bold text-emerald-300">-</div>
               <div className="col-span-2 text-right font-bold text-indigo-300">${(totals.stockValue / 1000).toFixed(1)}k</div>
-              <div className="col-span-2"></div>
-              <div className="col-span-2 text-right font-bold text-rose-300">${(totals.stockGapValue / 1000).toFixed(1)}k</div>
-              <div className="col-span-1"></div>
+              <div className="col-span-1 text-center font-bold text-violet-300">-</div>
+              <div className="col-span-2 text-right font-bold text-rose-300">${Math.max(0, totals.stockGapValue / 1000).toFixed(1)}k</div>
+              <div className="col-span-1 text-center">-</div>
             </div>
           </div>
 
@@ -448,9 +494,12 @@ export default function ABCDashboardPage() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">SKU</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Brand</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400">ABC</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Stock Value</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Coverage</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Coverage (Mo)</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Gap (Units)</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Gap Value</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400">Status</th>
                 </tr>
@@ -466,6 +515,8 @@ export default function ABCDashboardPage() {
                   >
                     <td className="px-4 py-3 font-mono text-xs text-slate-300">{item.materialId}</td>
                     <td className="px-4 py-3 text-white font-medium">{item.materialName}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs">{item.category}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs">Tenchi</td>
                     <td className="px-4 py-3 text-center"><ABCBadge classification={item.classification} /></td>
                     <td className="px-4 py-3 text-right text-slate-300">${item.stockValue.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right">
@@ -473,7 +524,12 @@ export default function ABCDashboardPage() {
                         {item.stockCoverageMonths.toFixed(2)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-300">${item.stockGapValue.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-slate-300">
+                      {Math.max(0, item.stockGapUnits).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-300">
+                      ${Math.max(0, item.stockGapValue).toLocaleString()}
+                    </td>
                     <td className="px-4 py-3 text-center"><StatusBadge status={item.inventoryAgeStatus} /></td>
                   </motion.tr>
                 ))}
@@ -505,7 +561,95 @@ export default function ABCDashboardPage() {
         )}
 
         <AgeConfigModal isOpen={showAgeConfig} onClose={() => setShowAgeConfig(false)} config={ageConfig} onSave={setAgeConfig} />
+        
+        {/* Low Coverage Modal */}
+        <LowCoverageModal 
+          isOpen={showLowCoverageModal} 
+          onClose={() => setShowLowCoverageModal(false)} 
+          items={summary.lowCoverage.items}
+        />
       </div>
     </div>
+  );
+}
+
+// Low Coverage Details Modal
+function LowCoverageModal({ isOpen, onClose, items }: { isOpen: boolean; onClose: () => void; items: Array<{ sku: string; name: string; category: string; coverage: number }> }) {
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 30 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-4xl max-h-[80vh] overflow-hidden shadow-2xl"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600">
+                <AlertCircle className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Low Stock Coverage Alert</h3>
+                <p className="text-sm text-slate-400">SKUs with less than 1 month of coverage</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="overflow-y-auto max-h-[60vh]">
+            <table className="w-full text-sm">
+              <thead className="bg-white/5 sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">SKU Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Category</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Coverage (Months)</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => (
+                  <motion.tr
+                    key={item.sku}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="border-t border-white/5 hover:bg-white/[0.03]"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-slate-300">{item.sku}</td>
+                    <td className="px-4 py-3 text-white font-medium">{item.name}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs">{item.category}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="font-medium text-rose-400">{item.coverage.toFixed(2)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        Critical
+                      </span>
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-white/10">
+            <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors">Close</button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
