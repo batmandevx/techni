@@ -12,6 +12,7 @@ export interface Material {
   plant: string;
   storageLocation: string;
   priceUSD: number;
+  category?: string;
   leadTimeDays?: number;
   serviceLevel?: number;
   orderingCost?: number;
