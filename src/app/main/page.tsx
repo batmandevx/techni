@@ -9,7 +9,8 @@ import {
   BarChart3, PieChart, Activity, Brain, Zap,
   Box, ShoppingCart, Target, Calendar, ChevronRight,
   TrendingDown, MoreHorizontal, RefreshCw, Database,
-  FileSpreadsheet, MapPin, Flame, Target as TargetIcon
+  FileSpreadsheet, MapPin, Flame, Target as TargetIcon,
+  Layers, GitCompare, FileCheck, Eye
 } from 'lucide-react';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import { AnimatedLogo } from '@/components/ui/AnimatedLogo';
@@ -370,10 +371,65 @@ function RegionalPerformance({ data }: { data: any[] }) {
   );
 }
 
+function FileComparisonTable({ files, onSelect }: { 
+  files: { id: string; name: string; revenue: number; orders: number; customers: number; products: number; quantity: number }[];
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-white/5">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-300">File</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-300">Revenue</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-300">Orders</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-300">Customers</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-300">Products</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-300">Quantity</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/5">
+          {files.map((file, index) => (
+            <motion.tr
+              key={file.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: index * 0.1 }}
+              onClick={() => onSelect(file.id)}
+              className="hover:bg-white/5 cursor-pointer transition-colors"
+            >
+              <td className="px-4 py-3 text-white font-medium">{file.name}</td>
+              <td className="px-4 py-3 text-right text-emerald-400">${file.revenue.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right text-indigo-400">{file.orders.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right text-cyan-400">{file.customers.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right text-violet-400">{file.products.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right text-amber-400">{file.quantity.toLocaleString()}</td>
+            </motion.tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [showLogo, setShowLogo] = useState(true);
   const [loading, setLoading] = useState(true);
-  const { dashboardData, hasRealData, currentData } = useData();
+  const { 
+    dashboardData, 
+    hasRealData, 
+    currentData, 
+    uploadedFiles,
+    viewMode, 
+    setViewMode,
+    selectedFiles,
+    toggleFileSelection,
+    selectAllFiles,
+    deselectAllFiles,
+    getFileComparison,
+    setCurrentData,
+    generateDashboardData
+  } = useData();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -382,7 +438,7 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const uploadedData = currentData;
+  const fileComparison = getFileComparison();
 
   const stats = {
     totalOrders: hasRealData ? dashboardData.totalOrders : 1247,
@@ -433,6 +489,15 @@ export default function DashboardPage() {
 
   const uploadedRadarData = hasRealData && dashboardData.radarMetrics.length ? dashboardData.radarMetrics : null;
   const uploadedRadarKeys = uploadedRadarData ? ['A', 'B'] : null;
+
+  const handleFileSelect = (fileId: string) => {
+    const file = uploadedFiles.find(f => f.id === fileId);
+    if (file) {
+      setCurrentData(file);
+      generateDashboardData(file);
+      setViewMode('single');
+    }
+  };
 
   if (showLogo) {
     return <AnimatedLogo onComplete={() => setShowLogo(false)} />;
@@ -503,9 +568,10 @@ export default function DashboardPage() {
                   </>
                 )}
               </span>
-              {hasRealData && uploadedData && (
+              {hasRealData && currentData && (
                 <span className="text-slate-500 text-xs">
-                  {uploadedData.name} · {(uploadedData.summary?.totalRows || uploadedData.rows?.length || 0).toLocaleString()} rows
+                  {currentData.name} · {(currentData.summary?.totalRows || currentData.rows?.length || 0).toLocaleString()} rows
+                  {viewMode === 'combined' && ' (Combined View)'}
                 </span>
               )}
             </motion.div>
@@ -522,8 +588,82 @@ export default function DashboardPage() {
           </motion.div>
         </motion.div>
 
+        {/* View Mode Selector - Only show when multiple files uploaded */}
+        {uploadedFiles.length > 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-4 p-4 bg-slate-900/40 border border-white/10 rounded-2xl"
+          >
+            <div className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-400" />
+              <span className="text-white font-medium">View Mode:</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('single')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'single'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Eye className="w-4 h-4 inline mr-2" />
+                Single File
+              </button>
+              <button
+                onClick={() => setViewMode('combined')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'combined'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Layers className="w-4 h-4 inline mr-2" />
+                Combined
+              </button>
+              <button
+                onClick={() => setViewMode('comparison')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  viewMode === 'comparison'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <GitCompare className="w-4 h-4 inline mr-2" />
+                Compare
+              </button>
+            </div>
+            {viewMode === 'combined' && (
+              <span className="text-slate-400 text-sm ml-auto">
+                Showing combined data from {uploadedFiles.length} files
+              </span>
+            )}
+          </motion.div>
+        )}
+
+        {/* File Comparison View */}
+        {viewMode === 'comparison' && fileComparison.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500/20">
+                  <GitCompare className="w-5 h-5 text-indigo-400" />
+                </div>
+                <h3 className="font-semibold text-white text-lg">File Comparison</h3>
+              </div>
+              <p className="text-slate-400 text-sm">Click a row to view that file</p>
+            </div>
+            <FileComparisonTable files={fileComparison} onSelect={handleFileSelect} />
+          </motion.div>
+        )}
+
         {/* Uploaded Data Info Banner */}
-        {uploadedData && (
+        {currentData && viewMode !== 'comparison' && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -534,10 +674,16 @@ export default function DashboardPage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-indigo-300 font-medium text-sm">
-                Live data from: <span className="text-white">{uploadedData.name}</span>
+                Live data from: <span className="text-white">{currentData.name}</span>
+                {viewMode === 'combined' && (
+                  <span className="text-indigo-400/70 ml-2">(Combined view)</span>
+                )}
               </p>
               <p className="text-indigo-400/60 text-xs mt-0.5">
-                {(uploadedData.summary?.totalRows || uploadedData.rows?.length || 0).toLocaleString()} rows &bull; {dashboardData.products} SKUs &bull; Format: {uploadedData.detectedFormat || uploadedData.fileType} &bull; Uploaded {new Date(uploadedData.uploadedAt).toLocaleString()}
+                {(currentData.summary?.totalRows || currentData.rows?.length || 0).toLocaleString()} rows 
+                &bull; {dashboardData.products} SKUs 
+                &bull; Format: {currentData.detectedFormat || currentData.fileType} 
+                &bull; Uploaded {new Date(currentData.uploadedAt).toLocaleString()}
               </p>
             </div>
             <Link href="/upload" className="flex-shrink-0 text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
@@ -600,10 +746,10 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-white">
-                      {uploadedRadarData ? 'Top Materials Comparison' : 'Performance Radar'}
+                      {uploadedRadarData ? 'Performance Metrics' : 'Performance Radar'}
                     </h3>
                     <p className="text-sm text-slate-400">
-                      {uploadedRadarData ? 'Top 5 SKUs across key metrics (normalized to 100)' : 'Multi-dimensional analysis'}
+                      {uploadedRadarData ? 'Multi-dimensional business analysis' : 'Multi-dimensional analysis'}
                     </p>
                   </div>
                   <TargetIcon className="w-5 h-5 text-pink-400" />
@@ -665,8 +811,8 @@ export default function DashboardPage() {
               <div className="p-6 h-full">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">Conversion Funnel</h3>
-                    <p className="text-sm text-slate-400">Customer journey analysis</p>
+                    <h3 className="text-lg font-semibold text-white">Data Flow Funnel</h3>
+                    <p className="text-sm text-slate-400">Order to delivery pipeline</p>
                   </div>
                   <Flame className="w-5 h-5 text-violet-400" />
                 </div>
@@ -821,28 +967,38 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="divide-y divide-white/5">
-            {uploadedData ? (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.95 }}
-                whileHover={{ x: 8, backgroundColor: 'rgba(255,255,255,0.03)' }}
-                className="flex items-center gap-4 px-6 py-4 cursor-pointer transition-colors"
-              >
-                <div className="p-2.5 rounded-lg bg-indigo-500/10">
-                  <Activity className="w-5 h-5 text-indigo-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{uploadedData.name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {(uploadedData.summary?.totalRows || uploadedData.rows?.length || 0).toLocaleString()} rows · {dashboardData.products} SKUs · {uploadedData.detectedFormat || uploadedData.fileType} format · {new Date(uploadedData.uploadedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Processed</span>
-                </span>
-              </motion.div>
+            {uploadedFiles.length > 0 ? (
+              uploadedFiles.map((file, index) => (
+                <motion.div
+                  key={file.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.95 + index * 0.05 }}
+                  whileHover={{ x: 8, backgroundColor: 'rgba(255,255,255,0.03)' }}
+                  onClick={() => handleFileSelect(file.id)}
+                  className="flex items-center gap-4 px-6 py-4 cursor-pointer transition-colors"
+                >
+                  <div className="p-2.5 rounded-lg bg-indigo-500/10">
+                    <FileCheck className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{file.name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {(file.rows?.length || 0).toLocaleString()} rows 
+                      &bull; {file.fileType} format 
+                      &bull; {new Date(file.uploadedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+                    currentData?.id === file.id 
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+                  }`}>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{currentData?.id === file.id ? 'Active' : 'Processed'}</span>
+                  </span>
+                </motion.div>
+              ))
             ) : (
               <div className="px-6 py-8 text-center">
                 <p className="text-slate-500">No uploads yet. Upload an Excel file to see your data here.</p>

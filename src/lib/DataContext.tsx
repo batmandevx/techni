@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { parseUploadedData } from '@/lib/uploadDataStore';
+import { analyzeData, AnalyzedData, compareDatasets, combineDatasets } from '@/lib/dataAnalyzer';
 
 // Types
 export interface Material {
@@ -94,6 +95,7 @@ export interface UploadedData {
   fileType: 'xlsx' | 'csv' | 'xls';
   detectedFormat?: string;
   summary?: DataSummary;
+  sheetName?: string;
 }
 
 export interface DataSummary {
@@ -143,6 +145,10 @@ export interface DashboardData {
   regionalData: { region: string; sales: number; orders: number; customers: number }[];
   monthlyComparison: { month: string; current: number; previous: number }[];
   inventoryByCategory: { category: string; value: number; turnover: number }[];
+  
+  // Data source info
+  dataSource: string;
+  calculatedAt: string;
 }
 
 const defaultDashboardData: DashboardData = {
@@ -170,6 +176,8 @@ const defaultDashboardData: DashboardData = {
   regionalData: [],
   monthlyComparison: [],
   inventoryByCategory: [],
+  dataSource: 'none',
+  calculatedAt: '',
 };
 
 interface DataContextType {
@@ -198,10 +206,19 @@ interface DataContextType {
   uploadedFiles: UploadedData[];
   currentData: UploadedData | null;
   dashboardData: DashboardData;
+  fileAnalyses: Map<string, AnalyzedData>;
   addUploadedFile: (file: Omit<UploadedData, 'id' | 'uploadedAt'>) => void;
   setCurrentData: (data: UploadedData | null) => void;
   clearAllData: () => void;
   generateDashboardData: (data: UploadedData) => void;
+  getFileComparison: () => { id: string; name: string; revenue: number; orders: number; customers: number; products: number; quantity: number }[];
+  getCombinedAnalysis: () => AnalyzedData | null;
+  viewMode: 'single' | 'combined' | 'comparison';
+  setViewMode: (mode: 'single' | 'combined' | 'comparison') => void;
+  selectedFiles: string[];
+  toggleFileSelection: (fileId: string) => void;
+  selectAllFiles: () => void;
+  deselectAllFiles: () => void;
 }
 
 // Default values
@@ -247,10 +264,19 @@ const DataContext = createContext<DataContextType>({
   uploadedFiles: [],
   currentData: null,
   dashboardData: defaultDashboardData,
+  fileAnalyses: new Map(),
   addUploadedFile: () => {},
   setCurrentData: () => {},
   clearAllData: () => {},
   generateDashboardData: () => {},
+  getFileComparison: () => [],
+  getCombinedAnalysis: () => null,
+  viewMode: 'single',
+  setViewMode: () => {},
+  selectedFiles: [],
+  toggleFileSelection: () => {},
+  selectAllFiles: () => {},
+  deselectAllFiles: () => {},
 });
 
 // Provider component
@@ -259,6 +285,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [excelPreviewData, setExcelPreviewData] = useState<any>(null);
   const [hasRealData, setHasRealData] = useState(false);
+  const [viewMode, setViewMode] = useState<'single' | 'combined' | 'comparison'>('single');
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   
   // State for data
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -272,6 +300,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedData[]>([]);
   const [currentData, setCurrentData] = useState<UploadedData | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData>(defaultDashboardData);
+  const [fileAnalyses, setFileAnalyses] = useState<Map<string, AnalyzedData>>(new Map());
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -301,6 +330,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (parsed.historicalData && Object.keys(parsed.historicalData).length > 0) {
           setHistoricalData(parsed.historicalData);
         }
+        if (parsed.fileAnalyses) {
+          setFileAnalyses(new Map(Object.entries(parsed.fileAnalyses)));
+        }
       } catch (e) {
         console.error('Failed to load saved data:', e);
       }
@@ -310,15 +342,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Save to localStorage when data changes
   useEffect(() => {
     if (uploadedFiles.length > 0 || currentData) {
+      const fileAnalysesObj = Object.fromEntries(fileAnalyses);
       localStorage.setItem('tenchi-uploaded-data', JSON.stringify({
         files: uploadedFiles,
         current: currentData,
         dashboard: dashboardData,
         materials,
         historicalData,
+        fileAnalyses: fileAnalysesObj
       }));
     }
-  }, [uploadedFiles, currentData, dashboardData, materials, historicalData]);
+  }, [uploadedFiles, currentData, dashboardData, materials, historicalData, fileAnalyses]);
   
   // Fetch all data from APIs
   const refreshData = useCallback(async () => {
@@ -464,9 +498,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setUploadedFiles([]);
     setCurrentData(null);
     setDashboardData(defaultDashboardData);
+    setFileAnalyses(new Map());
     setHasRealData(false);
     setMaterials([]);
     setHistoricalData({});
+    setSelectedFiles([]);
+    setViewMode('single');
     localStorage.removeItem('tenchi-uploaded-data');
     refreshData(); // Reload from database
   }, [refreshData]);
@@ -489,308 +526,124 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   }, [historicalData]);
 
-  // Helper functions for uploaded data analysis
-  const analyzeColumn = (rows: any[], column: string): ColumnStats => {
-    const values = rows.map(r => r[column]).filter(v => v !== null && v !== undefined && v !== '');
-    const numericValues = values.map(v => typeof v === 'string' ? parseFloat(v.replace(/[^0-9.-]/g, '')) : v).filter(v => !isNaN(v));
-    const dateValues = values.map(v => new Date(v)).filter(d => !isNaN(d.getTime()));
-    
-    if (numericValues.length / values.length > 0.7) {
-      const sum = numericValues.reduce((a, b) => a + b, 0);
-      return {
-        type: 'numeric',
-        min: Math.min(...numericValues),
-        max: Math.max(...numericValues),
-        avg: sum / numericValues.length,
-        sum: sum,
-        uniqueValues: new Set(values).size
-      };
-    } else if (dateValues.length / values.length > 0.7) {
-      return {
-        type: 'date',
-        uniqueValues: new Set(values).size
-      };
-    } else {
-      const valueCounts: Record<string, number> = {};
-      values.forEach(v => {
-        const key = String(v);
-        valueCounts[key] = (valueCounts[key] || 0) + 1;
-      });
-      const topValues = Object.entries(valueCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([value, count]) => ({ value, count }));
-      
-      return {
-        type: 'categorical',
-        uniqueValues: Object.keys(valueCounts).length,
-        topValues
-      };
-    }
-  };
-
   const generateDashboardData = useCallback((data: UploadedData) => {
-    const rows = data.rows;
+    // Use the real data analyzer - NO RANDOM VALUES
+    const analysis = analyzeData(data.headers, data.rows, data.name);
     
-    // Find relevant columns by name matching
-    const findColumn = (patterns: string[]): string | null => {
-      return data.headers.find(h => 
-        patterns.some(p => h.toLowerCase().includes(p.toLowerCase()))
-      ) || null;
-    };
+    // Store analysis for this file
+    setFileAnalyses(prev => new Map(prev).set(data.id, analysis));
 
-    const revenueCol = findColumn(['revenue', 'sales', 'amount', 'total', 'value', 'price']);
-    const quantityCol = findColumn(['quantity', 'qty', 'count', 'units', 'volume']);
-    const productCol = findColumn(['product', 'item', 'sku', 'name', 'description']);
-    const categoryCol = findColumn(['category', 'type', 'group', 'class']);
-    const dateCol = findColumn(['date', 'time', 'month', 'year', 'period']);
-    const customerCol = findColumn(['customer', 'client', 'buyer', 'account']);
-    const regionCol = findColumn(['region', 'area', 'zone', 'territory', 'country']);
+    // Build revenue trend from actual monthly data
+    const revenueTrend = analysis.monthlyRevenue.map(m => ({
+      name: m.month,
+      revenue: m.revenue,
+      orders: m.orders,
+      forecast: Math.round(m.revenue * 1.05) // 5% growth projection based on actual
+    }));
 
-    // Generate revenue trend
-    let revenueTrend: any[] = [];
-    if (dateCol && revenueCol) {
-      const grouped = new Map<string, { revenue: number; orders: number }>();
-      rows.forEach(row => {
-        const date = new Date(row[dateCol]);
-        const key = isNaN(date.getTime()) ? row[dateCol] : date.toLocaleString('default', { month: 'short' });
-        const existing = grouped.get(key) || { revenue: 0, orders: 0 };
-        existing.revenue += parseFloat(row[revenueCol]) || 0;
-        existing.orders += 1;
-        grouped.set(key, existing);
-      });
-      revenueTrend = Array.from(grouped.entries()).map(([name, vals]) => ({
-        name,
-        revenue: Math.round(vals.revenue),
-        orders: vals.orders,
-        forecast: Math.round(vals.revenue * (0.9 + Math.random() * 0.2))
-      })).slice(0, 12);
-    } else if (revenueCol) {
-      const chunkSize = Math.ceil(rows.length / 6);
-      revenueTrend = Array.from({ length: 6 }, (_, i) => {
-        const chunk = rows.slice(i * chunkSize, (i + 1) * chunkSize);
-        const revenue = chunk.reduce((sum, r) => sum + (parseFloat(r[revenueCol]) || 0), 0);
-        return {
-          name: `Period ${i + 1}`,
-          revenue: Math.round(revenue),
-          orders: chunk.length,
-          forecast: Math.round(revenue * (0.9 + Math.random() * 0.2))
-        };
-      });
+    // Category distribution from actual data
+    const categoryDistribution = analysis.revenueByCategory;
+
+    // ABC Classification from actual data
+    const abcClassification = analysis.abcClassification;
+
+    // Top products from actual data (no random growth)
+    const topProducts = analysis.topProducts.map(p => ({
+      ...p,
+      growth: 0 // Real growth would need historical comparison
+    }));
+
+    // Regional data from actual data
+    const regionalData = analysis.revenueByRegion;
+
+    // Calculate changes based on actual data trends (not random)
+    // If we have multiple months, calculate real trend
+    let ordersChange = 0;
+    let revenueChange = 0;
+    let customersChange = 0;
+    let productsChange = 0;
+    let accuracyChange = 0;
+    let inventoryChange = 0;
+
+    if (analysis.monthlyRevenue.length >= 2) {
+      const firstMonth = analysis.monthlyRevenue[0];
+      const lastMonth = analysis.monthlyRevenue[analysis.monthlyRevenue.length - 1];
+      revenueChange = firstMonth.revenue > 0 
+        ? Math.round(((lastMonth.revenue - firstMonth.revenue) / firstMonth.revenue) * 1000) / 10
+        : 0;
+      ordersChange = firstMonth.orders > 0
+        ? Math.round(((lastMonth.orders - firstMonth.orders) / firstMonth.orders) * 1000) / 10
+        : 0;
     }
-
-    // Category distribution
-    let categoryDistribution: any[] = [];
-    if (categoryCol) {
-      const counts = new Map<string, number>();
-      rows.forEach(row => {
-        const cat = row[categoryCol] || 'Unknown';
-        counts.set(cat, (counts.get(cat) || 0) + 1);
-      });
-      const total = rows.length;
-      categoryDistribution = Array.from(counts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([name, value]) => ({
-          name,
-          value,
-          percentage: Math.round((value / total) * 100)
-        }));
-    } else if (productCol) {
-      const counts = new Map<string, number>();
-      rows.forEach(row => {
-        const prod = String(row[productCol] || '').split(' ')[0];
-        counts.set(prod, (counts.get(prod) || 0) + 1);
-      });
-      const total = rows.length;
-      categoryDistribution = Array.from(counts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([name, value]) => ({
-          name: name || 'Unknown',
-          value,
-          percentage: Math.round((value / total) * 100)
-        }));
-    }
-
-    // ABC Classification
-    let abcClassification: any[] = [];
-    if (revenueCol && productCol) {
-      const productRevenue = new Map<string, number>();
-      rows.forEach(row => {
-        const prod = row[productCol];
-        const rev = parseFloat(row[revenueCol]) || 0;
-        productRevenue.set(prod, (productRevenue.get(prod) || 0) + rev);
-      });
-      
-      const sorted = Array.from(productRevenue.entries()).sort((a, b) => b[1] - a[1]);
-      const total = sorted.reduce((sum, [, v]) => sum + v, 0);
-      let cumulative = 0;
-      let aCount = 0, bCount = 0, cCount = 0;
-      
-      sorted.forEach(([, rev]) => {
-        cumulative += rev;
-        const pct = cumulative / total;
-        if (pct <= 0.8) aCount++;
-        else if (pct <= 0.95) bCount++;
-        else cCount++;
-      });
-      
-      abcClassification = [
-        { name: 'Class A', value: aCount, percentage: Math.round((aCount / sorted.length) * 100) },
-        { name: 'Class B', value: bCount, percentage: Math.round((bCount / sorted.length) * 100) },
-        { name: 'Class C', value: cCount, percentage: Math.round((cCount / sorted.length) * 100) }
-      ];
-    }
-
-    // Radar metrics
-    const radarMetrics = [
-      { subject: 'Sales', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
-      { subject: 'Inventory', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
-      { subject: 'Forecast', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
-      { subject: 'Orders', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
-      { subject: 'Customers', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 },
-      { subject: 'Growth', A: Math.round(Math.random() * 40 + 60), B: Math.round(Math.random() * 30 + 50), fullMark: 100 }
-    ];
-
-    // Funnel data
-    const funnelData = [
-      { name: 'Total Visitors', value: rows.length * 10, fill: '#6366f1' },
-      { name: 'Product Views', value: Math.round(rows.length * 8.5), fill: '#8b5cf6' },
-      { name: 'Add to Cart', value: Math.round(rows.length * 5.2), fill: '#a855f7' },
-      { name: 'Checkout', value: Math.round(rows.length * 3.1), fill: '#d946ef' },
-      { name: 'Purchase', value: rows.length, fill: '#ec4899' }
-    ];
-
-    // Heatmap data
-    let heatmapData: any[] = [];
-    if (categoryCol && dateCol) {
-      const timeGroups = new Map<string, Map<string, number>>();
-      rows.forEach(row => {
-        const cat = row[categoryCol] || 'Unknown';
-        const date = new Date(row[dateCol]);
-        const timeKey = isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString('default', { month: 'short' });
-        
-        if (!timeGroups.has(timeKey)) timeGroups.set(timeKey, new Map());
-        const catMap = timeGroups.get(timeKey)!;
-        catMap.set(cat, (catMap.get(cat) || 0) + 1);
-      });
-      
-      heatmapData = [];
-      timeGroups.forEach((cats, time) => {
-        cats.forEach((value, cat) => {
-          heatmapData.push({ x: time, y: cat, value });
-        });
-      });
-    }
-
-    // Top products
-    let topProducts: any[] = [];
-    if (productCol && revenueCol) {
-      const productStats = new Map<string, { sales: number; quantity: number }>();
-      rows.forEach(row => {
-        const prod = row[productCol];
-        const rev = parseFloat(row[revenueCol]) || 0;
-        const qty = quantityCol ? parseFloat(row[quantityCol]) || 1 : 1;
-        const existing = productStats.get(prod) || { sales: 0, quantity: 0 };
-        existing.sales += rev;
-        existing.quantity += qty;
-        productStats.set(prod, existing);
-      });
-      
-      topProducts = Array.from(productStats.entries())
-        .sort((a, b) => b[1].sales - a[1].sales)
-        .slice(0, 8)
-        .map(([name, stats]) => ({
-          name: name.length > 20 ? name.substring(0, 20) + '...' : name,
-          sales: Math.round(stats.sales),
-          quantity: stats.quantity,
-          growth: Math.round((Math.random() * 40 - 10) * 10) / 10
-        }));
-    }
-
-    // Regional data
-    let regionalData: any[] = [];
-    if (regionCol) {
-      const regionStats = new Map<string, { sales: number; orders: number; customers: Set<string> }>();
-      rows.forEach(row => {
-        const reg = row[regionCol] || 'Unknown';
-        const rev = revenueCol ? parseFloat(row[revenueCol]) || 0 : 0;
-        const cust = customerCol ? row[customerCol] : null;
-        
-        const existing = regionStats.get(reg) || { sales: 0, orders: 0, customers: new Set() };
-        existing.sales += rev;
-        existing.orders += 1;
-        if (cust) existing.customers.add(cust);
-        regionStats.set(reg, existing);
-      });
-      
-      regionalData = Array.from(regionStats.entries()).map(([region, stats]) => ({
-        region,
-        sales: Math.round(stats.sales),
-        orders: stats.orders,
-        customers: stats.customers.size
-      }));
-    }
-
-    // Inventory by category
-    let inventoryByCategory: any[] = [];
-    if (categoryCol) {
-      const catStats = new Map<string, { value: number; count: number }>();
-      rows.forEach(row => {
-        const cat = row[categoryCol] || 'Unknown';
-        const val = revenueCol ? parseFloat(row[revenueCol]) || 0 : 0;
-        const existing = catStats.get(cat) || { value: 0, count: 0 };
-        existing.value += val;
-        existing.count += 1;
-        catStats.set(cat, existing);
-      });
-      
-      inventoryByCategory = Array.from(catStats.entries())
-        .sort((a, b) => b[1].value - a[1].value)
-        .slice(0, 6)
-        .map(([category, stats]) => ({
-          category,
-          value: Math.round(stats.value),
-          turnover: Math.round((stats.count / stats.value) * 1000) / 10
-        }));
-    }
-
-    // Calculate KPIs
-    const totalRevenue = revenueCol ? rows.reduce((sum, r) => sum + (parseFloat(r[revenueCol]) || 0), 0) : 0;
-    const uniqueCustomers = customerCol ? new Set(rows.map(r => r[customerCol])).size : Math.round(rows.length * 0.3);
-    const uniqueProducts = productCol ? new Set(rows.map(r => r[productCol])).size : Math.round(rows.length * 0.5);
 
     const newDashboardData: DashboardData = {
-      totalOrders: rows.length,
-      ordersChange: Math.round((Math.random() * 20 - 5) * 10) / 10,
-      revenue: Math.round(totalRevenue),
-      revenueChange: Math.round((Math.random() * 15 - 2) * 10) / 10,
-      customers: uniqueCustomers,
-      customersChange: Math.round((Math.random() * 10 - 2) * 10) / 10,
-      products: uniqueProducts,
-      productsChange: Math.round((Math.random() * 8 - 3) * 10) / 10,
-      forecastAccuracy: Math.round((85 + Math.random() * 10) * 10) / 10,
-      accuracyChange: Math.round((Math.random() * 5) * 10) / 10,
-      inventoryValue: Math.round(totalRevenue * 0.4),
-      inventoryChange: Math.round((Math.random() * 12 - 2) * 10) / 10,
-      revenueTrend,
+      totalOrders: analysis.totalOrders,
+      ordersChange,
+      revenue: analysis.totalRevenue,
+      revenueChange,
+      customers: analysis.uniqueCustomers,
+      customersChange,
+      products: analysis.uniqueProducts,
+      productsChange,
+      forecastAccuracy: analysis.forecastAccuracy || 0,
+      accuracyChange,
+      inventoryValue: analysis.inventoryValue,
+      inventoryChange,
+      revenueTrend: revenueTrend.length > 0 ? revenueTrend : 
+        // Fallback if no date column: split data into periods
+        Array.from({ length: 6 }, (_, i) => {
+          const chunkSize = Math.ceil(data.rows.length / 6);
+          const start = i * chunkSize;
+          const end = Math.min(start + chunkSize, data.rows.length);
+          const chunkRevenue = analysis.revenueColumn 
+            ? data.rows.slice(start, end).reduce((sum, r) => sum + (parseFloat(r[analysis.revenueColumn!]) || 0), 0)
+            : 0;
+          return {
+            name: `Period ${i + 1}`,
+            revenue: Math.round(chunkRevenue),
+            orders: end - start,
+            forecast: Math.round(chunkRevenue * 1.05)
+          };
+        }),
       categoryDistribution,
       abcClassification,
       performanceMetrics: [
-        { name: 'Sales', actual: Math.round(Math.random() * 20 + 80), target: 85 },
-        { name: 'Orders', actual: Math.round(Math.random() * 20 + 75), target: 80 },
-        { name: 'Inventory', actual: Math.round(Math.random() * 20 + 85), target: 90 },
-        { name: 'Forecast', actual: Math.round(Math.random() * 15 + 88), target: 85 }
+        { name: 'Sales', actual: analysis.totalRevenue > 0 ? 100 : 0, target: 85 },
+        { name: 'Orders', actual: analysis.totalOrders > 0 ? 100 : 0, target: 80 },
+        { name: 'Inventory', actual: analysis.inventoryValue > 0 ? 100 : 0, target: 90 },
+        { name: 'Forecast', actual: analysis.forecastAccuracy || 0, target: 85 }
       ],
-      radarMetrics,
-      funnelData,
+      radarMetrics: [
+        { subject: 'Sales', A: Math.min(100, Math.round(analysis.totalRevenue / 10000)), B: 50, fullMark: 100 },
+        { subject: 'Inventory', A: Math.min(100, Math.round(analysis.inventoryValue / 10000)), B: 50, fullMark: 100 },
+        { subject: 'Forecast', A: analysis.forecastAccuracy || 50, B: 50, fullMark: 100 },
+        { subject: 'Orders', A: Math.min(100, analysis.totalOrders), B: 50, fullMark: 100 },
+        { subject: 'Customers', A: Math.min(100, analysis.uniqueCustomers), B: 50, fullMark: 100 },
+        { subject: 'Products', A: Math.min(100, analysis.uniqueProducts), B: 50, fullMark: 100 }
+      ],
+      funnelData: [
+        { name: 'Total Orders', value: analysis.totalOrders, fill: '#6366f1' },
+        { name: 'Unique Customers', value: analysis.uniqueCustomers, fill: '#8b5cf6' },
+        { name: 'Unique Products', value: analysis.uniqueProducts, fill: '#a855f7' },
+        { name: 'Categories', value: analysis.uniqueCategories, fill: '#d946ef' },
+        { name: 'Regions', value: analysis.uniqueRegions, fill: '#ec4899' }
+      ],
       sankeyData: [],
-      heatmapData,
+      heatmapData: [], // Would need time-based category data
       topProducts,
       regionalData,
-      monthlyComparison: [],
-      inventoryByCategory
+      monthlyComparison: analysis.monthlyRevenue.map((m, i, arr) => ({
+        month: m.month,
+        current: m.revenue,
+        previous: i > 0 ? arr[i - 1].revenue : m.revenue
+      })),
+      inventoryByCategory: analysis.revenueByCategory.map(c => ({
+        category: c.name,
+        value: c.value,
+        turnover: c.percentage
+      })),
+      dataSource: data.name,
+      calculatedAt: new Date().toISOString()
     };
 
     setDashboardData(newDashboardData);
@@ -814,17 +667,106 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setHistoricalData(parsedHistoricalData);
       setHasRealData(true);
     }
+    
+    // Auto-select the new file
+    setSelectedFiles(prev => [...prev, newFile.id]);
   }, [generateDashboardData, parseFileToContextData]);
 
   const clearAllData = useCallback(() => {
     setUploadedFiles([]);
     setCurrentData(null);
     setDashboardData(defaultDashboardData);
+    setFileAnalyses(new Map());
     setHasRealData(false);
     setMaterials([]);
     setHistoricalData({});
+    setSelectedFiles([]);
+    setViewMode('single');
     localStorage.removeItem('tenchi-uploaded-data');
   }, []);
+
+  // Get comparison data for all uploaded files
+  const getFileComparison = useCallback(() => {
+    return uploadedFiles.map(file => {
+      const analysis = fileAnalyses.get(file.id);
+      return {
+        id: file.id,
+        name: file.name,
+        revenue: analysis?.totalRevenue || 0,
+        orders: analysis?.totalOrders || file.rows.length,
+        customers: analysis?.uniqueCustomers || 0,
+        products: analysis?.uniqueProducts || 0,
+        quantity: analysis?.totalQuantity || 0
+      };
+    });
+  }, [uploadedFiles, fileAnalyses]);
+
+  // Get combined analysis of all files
+  const getCombinedAnalysis = useCallback((): AnalyzedData | null => {
+    if (uploadedFiles.length === 0) return null;
+    if (uploadedFiles.length === 1) {
+      return fileAnalyses.get(uploadedFiles[0].id) || null;
+    }
+
+    // Combine all rows from all files
+    const allRows = uploadedFiles.flatMap(f => f.rows);
+    const allHeaders = uploadedFiles[0]?.headers || [];
+    
+    return analyzeData(allHeaders, allRows, `Combined (${uploadedFiles.length} files)`);
+  }, [uploadedFiles, fileAnalyses]);
+
+  // File selection handlers
+  const toggleFileSelection = useCallback((fileId: string) => {
+    setSelectedFiles(prev => 
+      prev.includes(fileId) 
+        ? prev.filter(id => id !== fileId)
+        : [...prev, fileId]
+    );
+  }, []);
+
+  const selectAllFiles = useCallback(() => {
+    setSelectedFiles(uploadedFiles.map(f => f.id));
+  }, [uploadedFiles]);
+
+  const deselectAllFiles = useCallback(() => {
+    setSelectedFiles([]);
+  }, []);
+
+  // Update dashboard when view mode changes
+  useEffect(() => {
+    if (viewMode === 'combined' && uploadedFiles.length > 1) {
+      const combined = getCombinedAnalysis();
+      if (combined) {
+        // Build dashboard from combined analysis
+        const revenueTrend = combined.monthlyRevenue.map(m => ({
+          name: m.month,
+          revenue: m.revenue,
+          orders: m.orders,
+          forecast: Math.round(m.revenue * 1.05)
+        }));
+
+        setDashboardData(prev => ({
+          ...prev,
+          totalOrders: combined.totalOrders,
+          revenue: combined.totalRevenue,
+          customers: combined.uniqueCustomers,
+          products: combined.uniqueProducts,
+          forecastAccuracy: combined.forecastAccuracy || 0,
+          inventoryValue: combined.inventoryValue,
+          revenueTrend: revenueTrend.length > 0 ? revenueTrend : prev.revenueTrend,
+          categoryDistribution: combined.revenueByCategory,
+          abcClassification: combined.abcClassification,
+          topProducts: combined.topProducts.map(p => ({ ...p, growth: 0 })),
+          regionalData: combined.revenueByRegion,
+          dataSource: `Combined (${uploadedFiles.length} files)`,
+          calculatedAt: new Date().toISOString()
+        }));
+      }
+    } else if (viewMode === 'single' && currentData) {
+      // Regenerate for current file
+      generateDashboardData(currentData);
+    }
+  }, [viewMode, uploadedFiles.length, currentData, getCombinedAnalysis, generateDashboardData]);
   
   const value = useMemo(() => ({
     customers,
@@ -847,10 +789,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     uploadedFiles,
     currentData,
     dashboardData,
+    fileAnalyses,
     addUploadedFile,
     setCurrentData,
     clearAllData,
     generateDashboardData,
+    getFileComparison,
+    getCombinedAnalysis,
+    viewMode,
+    setViewMode,
+    selectedFiles,
+    toggleFileSelection,
+    selectAllFiles,
+    deselectAllFiles,
   }), [
     customers,
     materials,
@@ -868,10 +819,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     uploadedFiles,
     currentData,
     dashboardData,
+    fileAnalyses,
     hasRealData,
     addUploadedFile,
     clearAllData,
     generateDashboardData,
+    getFileComparison,
+    getCombinedAnalysis,
+    viewMode,
+    selectedFiles,
+    toggleFileSelection,
+    selectAllFiles,
+    deselectAllFiles,
   ]);
   
   return (
