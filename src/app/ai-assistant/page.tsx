@@ -191,7 +191,7 @@ If the problem persists, please check that your data is properly formatted.`,
 
   const exportChat = () => {
     const chatContent = messages.map(m => 
-      `${m.role === 'assistant' ? 'AI' : 'User'} (${m.timestamp.toLocaleString()}):\n${m.content}\n\n`
+      `${m.role === 'model' ? 'AI' : 'User'} (${m.timestamp.toLocaleString()}):\n${m.content}\n\n`
     ).join('---\n\n');
     
     const blob = new Blob([chatContent], { type: 'text/plain' });
