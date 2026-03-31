@@ -325,10 +325,10 @@ export default function UploadPage() {
                     <p className="text-lg font-semibold text-white truncate">{file.name}</p>
                     <div className="flex items-center gap-3 text-sm text-slate-400">
                       <span>{formatFileSize(file.size)}</span>
-                      {file.totalRows > 0 && (
+                      {(file.totalRows ?? 0) > 0 && (
                         <>
                           <span>|</span>
-                          <span>{file.totalRows.toLocaleString()} rows</span>
+                          <span>{file.totalRows?.toLocaleString()} rows</span>
                         </>
                       )}
                       {file.headers && (
