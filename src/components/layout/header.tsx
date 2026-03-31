@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, ComponentType, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu,
@@ -10,10 +10,26 @@ import {
   AlertCircle,
   Info,
   X,
+  User,
 } from 'lucide-react';
-import { Show, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+
+// Clerk component types
+type ShowProps = { when: string; children: ReactNode };
+type UserButtonProps = { appearance?: { elements?: Record<string, string> } };
+
+// Conditionally import Clerk components
+let ClerkShow: ComponentType<ShowProps> | null = null;
+let ClerkUserButton: ComponentType<UserButtonProps> | null = null;
+
+try {
+  const clerk = require('@clerk/nextjs');
+  ClerkShow = clerk.Show;
+  ClerkUserButton = clerk.UserButton;
+} catch (e) {
+  // Clerk not available
+}
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -38,6 +54,7 @@ export function Header({ onMenuClick, pageTitle, pageSubtitle }: HeaderProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const isClerkAvailable = !!ClerkShow && !!ClerkUserButton;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -157,32 +174,45 @@ export function Header({ onMenuClick, pageTitle, pageSubtitle }: HeaderProps) {
           </AnimatePresence>
         </div>
 
-        {/* Clerk Auth */}
+        {/* Auth */}
         <div className="flex items-center gap-2">
-          <Show when="signed-out">
+          {isClerkAvailable && ClerkShow && ClerkUserButton ? (
+            <>
+              <ClerkShow when="signed-out">
+                <Link
+                  href="/auth"
+                  className="hidden sm:block px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/auth?mode=sign-up"
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-500/80 hover:bg-indigo-500 rounded-xl transition-all"
+                >
+                  Sign Up
+                </Link>
+              </ClerkShow>
+              <ClerkShow when="signed-in">
+                <ClerkUserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: 'w-7 h-7 rounded-full ring-2 ring-white/10',
+                      userButtonTrigger: 'flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-white/5 transition-all',
+                    },
+                  }}
+                />
+              </ClerkShow>
+            </>
+          ) : (
+            // Fallback when Clerk is not configured
             <Link
               href="/auth"
-              className="hidden sm:block px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-indigo-500/80 hover:bg-indigo-500 rounded-xl transition-all"
             >
-              Sign In
+              <User className="w-4 h-4" />
+              <span className="hidden sm:inline">Demo Mode</span>
             </Link>
-            <Link
-              href="/auth?mode=sign-up"
-              className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-500/80 hover:bg-indigo-500 rounded-xl transition-all"
-            >
-              Sign Up
-            </Link>
-          </Show>
-          <Show when="signed-in">
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: 'w-7 h-7 rounded-full ring-2 ring-white/10',
-                  userButtonTrigger: 'flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-white/5 transition-all',
-                },
-              }}
-            />
-          </Show>
+          )}
         </div>
       </div>
 
