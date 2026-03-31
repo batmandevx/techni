@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import { ClerkProviderWrapper } from "@/components/clerk/ClerkProviderWrapper";
 import LayoutClient from "./layout-client";
 
 export const metadata: Metadata = {
@@ -8,17 +8,12 @@ export const metadata: Metadata = {
   description: "AI-powered Sales and Operations Planning platform for intelligent demand forecasting and inventory optimization",
 };
 
-// Check if Clerk is configured
-const isClerkConfigured = 
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_') &&
-  process.env.CLERK_SECRET_KEY?.startsWith('sk_');
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const content = (
+  return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <script
@@ -41,23 +36,12 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased" style={{ background: '#080d1a' }}>
-        <LayoutClient>
-          {children}
-        </LayoutClient>
+        <ClerkProviderWrapper>
+          <LayoutClient>
+            {children}
+          </LayoutClient>
+        </ClerkProviderWrapper>
       </body>
     </html>
   );
-
-  // Only wrap with ClerkProvider if properly configured
-  if (isClerkConfigured) {
-    return (
-      <ClerkProvider>
-        {content}
-      </ClerkProvider>
-    );
-  }
-
-  // Fallback without auth
-  console.warn('[Layout] Clerk not configured, running without authentication');
-  return content;
 }
