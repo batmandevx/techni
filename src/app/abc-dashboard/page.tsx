@@ -245,7 +245,7 @@ export default function ABCDashboardPage() {
     return [];
   }, [materials, historicalData, hasUploadedData]);
 
-  const abcResults = useMemo(() => performABCAnalysis(materialsForABC), [materialsForABC]);
+  const abcResults = useMemo(() => performABCAnalysis(materialsForABC), [materialsForABC, ageConfig]);
   
   const filteredResults = useMemo(() => {
     return abcResults.filter(item => {

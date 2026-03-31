@@ -9,6 +9,7 @@ import {
   Download, ExternalLink, Eye, Box
 } from 'lucide-react';
 import Link from 'next/link';
+import MapTracking from '@/components/MapTracking';
 
 // Mock container data
 const MOCK_CONTAINERS = [
@@ -186,6 +187,10 @@ export default function ContainerTrackingPage() {
         <KPICard title="In Transit" value={kpis.inTransit} subtitle="On the way" icon={Navigation} color="bg-amber-500" />
         <KPICard title="Arrived" value={kpis.arrived} subtitle="At destination port" icon={Anchor} color="bg-cyan-500" />
         <KPICard title="Delivered" value={kpis.delivered} subtitle="Completed" icon={CheckCircle2} color="bg-emerald-500" />
+      </div>
+
+      <div className="mb-8">
+        <MapTracking containers={filteredContainers} />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 mb-6">

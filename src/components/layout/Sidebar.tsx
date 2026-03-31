@@ -19,7 +19,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/main', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/abc-dashboard', label: 'ABC Analysis', icon: BarChart3 },
   { path: '/forecasting', label: 'Forecasting', icon: Activity },
   { path: '/optimizer', label: 'Order Optimizer', icon: Zap },
@@ -149,7 +149,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
     >
       {/* Logo */}
       <div className="flex items-center justify-between px-3 h-16 border-b border-white/6 flex-shrink-0">
-        <Link href="/" className="flex items-center gap-2.5 min-w-0">
+        <Link href="/main" className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/30">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
@@ -184,7 +184,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: Side
           <NavItemComponent
             key={item.path}
             item={item}
-            isActive={pathname === item.path || (item.path !== '/' && pathname?.startsWith(item.path))}
+            isActive={pathname === item.path || (item.path !== '/main' && pathname?.startsWith(item.path))}
             collapsed={collapsed && !mobile}
           />
         ))}

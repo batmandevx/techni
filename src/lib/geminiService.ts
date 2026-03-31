@@ -18,10 +18,24 @@ export interface SOPDataContext {
   summary?: DataSummary;
   dashboardData?: DashboardData;
   storeData?: StoreUploadedData | null;
+  language?: 'en' | 'ar';
 }
 
 // Comprehensive S&OP system prompt
-const SOP_SYSTEM_PROMPT = `You are TenchiOne AI, an expert S&OP (Sales & Operations Planning) analyst. You have been given a specific dataset uploaded by the user.
+const getSystemPrompt = (language: 'en' | 'ar' = 'en') => {
+  const basePrompt = language === 'ar' 
+    ? `أنت مساعد TenchiOne AI، خبير في تحليل تخطيط المبيعات والعمليات (S&OP). تم تزويدك ببيانات محددة قام المستخدم بتحميلها.
+
+تعليمات حاسمة:
+1. يجب أن تجيب على EVERY سؤال باستخدام البيانات المقدمة في السياق أدناه فقط.
+2. لا تعطِ تعريفات عامة أو قوالب أو نصائح. يريد المستخدم الحقائق من ملفه.
+3. اذكر دائماً الأرقام والوحدات (SKUs) والأشهر والفئات المحددة من البيانات.
+4. إذا لم يكن الجواب الدقيق في البيانات، احسبه من البيانات المقدمة (مثل المجاميع والمتوسطات والنسب المئوية) واذكر حسابك.
+5. قل "البيانات غير متوفرة" فقط إذا كان السياق المحمل يفتقد حقاً الأعمدة/القيم الضرورية.
+6. استخدم جداول markdown للمقارنات والقوائم.
+7. كن موجزاً ولكن محدداً. ابدأ بالإجابة المباشرة، ثم أضف جملة أو جملتين من الرؤى.
+8. قدم رداً طبيعياً وعالي الجودة باللغة العربية مع تنسيق مناسب.`
+    : `You are TenchiOne AI, an expert S&OP (Sales & Operations Planning) analyst. You have been given a specific dataset uploaded by the user.
 
 CRITICAL INSTRUCTIONS:
 1. You MUST answer EVERY question using ONLY the data provided in the context below.
@@ -30,8 +44,10 @@ CRITICAL INSTRUCTIONS:
 4. If the user asks a question and the exact answer isn't in the data, calculate it from the data provided (e.g., sums, averages, percentages) and state your calculation.
 5. Only say "data not available" if the uploaded context truly lacks the necessary columns/values.
 6. Use markdown tables for comparisons and lists.
-7. Be concise but specific. Start with the direct answer, then add 1-2 sentences of insight.
-8. MULTILINGUAL SUPPORT: You must detect the user's language (e.g., Arabic, English, Spanish) and respond in the EXACT same language. If the user speaks Arabic, provide a natural-sounding, high-quality Arabic response with proper formatting.`;
+7. Be concise but specific. Start with the direct answer, then add 1-2 sentences of insight.`;
+
+  return basePrompt;
+};
 
 // Build context from uploaded data
 function buildDataContext(context: SOPDataContext): string {
@@ -306,9 +322,12 @@ export async function generateGeminiResponse(
 ): Promise<string> {
   try {
     const dataContext = buildDataContext(context);
+    const language = context.language || 'en';
 
     if (dataContext === 'No data has been uploaded yet.') {
-      return 'No data has been uploaded yet. Please upload an Excel or CSV file first.';
+      return language === 'ar' 
+        ? 'لم يتم تحميل أي بيانات بعد. يرجى تحميل ملف Excel أو CSV أولاً.'
+        : 'No data has been uploaded yet. Please upload an Excel or CSV file first.';
     }
 
     const validHistory = chatHistory.filter(msg => msg.id !== 'welcome');
@@ -319,20 +338,18 @@ export async function generateGeminiResponse(
     }));
 
     // Ensure alternating roles (API requirement)
-    // If the last message in history is a 'user', and we are about to append another 'user',
-    // we should combine them or drop the previous user message, but normally history alternates.
     if (formattedHistory.length > 0 && formattedHistory[formattedHistory.length - 1].role === 'user') {
-      // Remove the last pending user message from history if there was no model response
       formattedHistory.pop();
     }
 
-    const currentPrompt = `${SOP_SYSTEM_PROMPT}
+    const systemPrompt = getSystemPrompt(language);
+    const currentPrompt = `${systemPrompt}
 
 ${dataContext}
 
 USER QUESTION: ${userMessage}
 
-IMPORTANT: Answer using ONLY the data above. Cite specific numbers and names from the dataset.`;
+IMPORTANT: Answer using ONLY the data above. Cite specific numbers and names from the dataset. Respond in ${language === 'ar' ? 'Arabic' : 'English'} language.`;
 
     const contents = [
       ...formattedHistory,
@@ -402,9 +419,13 @@ function generateFallbackResponse(userMessage: string, context: SOPDataContext):
   const data = context.currentData || context.uploadedFiles?.[0];
   const store = context.storeData;
   const db = context.dashboardData;
+  const language = context.language || 'en';
+  const isArabic = language === 'ar';
 
   if (!data && !store) {
-    return `No data has been uploaded yet. Please upload your Excel or CSV files first.`;
+    return isArabic 
+      ? 'لم يتم تحميل أي بيانات بعد. يرجى تحميل ملفات Excel أو CSV أولاً.'
+      : 'No data has been uploaded yet. Please upload your Excel or CSV files first.';
   }
 
   const rows = data?.rows || [];
@@ -438,7 +459,17 @@ function generateFallbackResponse(userMessage: string, context: SOPDataContext):
     // ABC / classification
     if (lowerMsg.includes('abc') || lowerMsg.includes('classification')) {
       const abcRows = store.abcDistribution.map(a => `| ${a.name} | ${a.value} |`).join('\n');
-      return `## ABC Classification
+      return isArabic ? `## تصنيف ABC
+
+| الفئة | عدد الوحدات |
+|-------|-----------|
+${abcRows}
+
+**إجمالي الوحدات:** ${store.kpis.totalSKUs}
+
+**أهم المواد حسب الإيرادات:**
+${store.materials.slice(0, 5).map(m => `- **${m.id}** (${m.description}): $${Math.round(m.totalSales * Math.max(m.price, 1)).toLocaleString()}`).join('\n')}`
+      : `## ABC Classification
 
 | Class | SKU Count |
 |-------|-----------|
@@ -453,7 +484,16 @@ ${store.materials.slice(0, 5).map(m => `- **${m.id}** (${m.description}): $${Mat
     // Coverage / stock
     if (lowerMsg.includes('coverage') || lowerMsg.includes('stock coverage')) {
       const lowCoverage = store.materials.filter(m => m.avgMonthlySales > 0 && (m.currentStock / m.avgMonthlySales) < 1);
-      return `## Stock Coverage
+      return isArabic ? `## تغطية المخزون
+
+**متوسط التغطية:** ${store.kpis.avgCoverage.toFixed(1)} شهر
+
+**تنبيهات التغطية المنخفضة (< 1 شهر):**
+${lowCoverage.length > 0 ? lowCoverage.map(m => `- **${m.id}** (${m.description}): ${(m.currentStock / m.avgMonthlySales).toFixed(1)} شهر (المخزون: ${m.currentStock}, المتوسط: ${Math.round(m.avgMonthlySales)})`).join('\n') : '- لا يوجد'}
+
+**أعلى 5 حسب التغطية:**
+${store.materials.filter(m => m.avgMonthlySales > 0).sort((a, b) => (b.currentStock / b.avgMonthlySales) - (a.currentStock / a.avgMonthlySales)).slice(0, 5).map(m => `- **${m.id}**: ${(m.currentStock / m.avgMonthlySales).toFixed(1)} شهر`).join('\n')}`
+      : `## Stock Coverage
 
 **Average Coverage:** ${store.kpis.avgCoverage.toFixed(1)} months
 
@@ -466,7 +506,14 @@ ${store.materials.filter(m => m.avgMonthlySales > 0).sort((a, b) => (b.currentSt
 
     // Forecast accuracy
     if (lowerMsg.includes('forecast accuracy')) {
-      return `## Forecast Accuracy
+      return isArabic ? `## دقة التوقعات
+
+**الإجمالي:** ${store.kpis.forecastAccuracy.toFixed(1)}%
+
+| الشهر | الفعلي | التوقع | الفرق |
+|-------|--------|--------|-------|
+${store.monthlyTrend.map(m => `| ${m.month} | ${m.actual.toLocaleString()} | ${m.forecast.toLocaleString()} | ${Math.abs(m.actual - m.forecast).toLocaleString()} |`).join('\n')}`
+      : `## Forecast Accuracy
 
 **Overall:** ${store.kpis.forecastAccuracy.toFixed(1)}%
 
@@ -477,7 +524,19 @@ ${store.monthlyTrend.map(m => `| ${m.month} | ${m.actual.toLocaleString()} | ${m
 
     // Inventory / stock value
     if (lowerMsg.includes('inventory') || lowerMsg.includes('stock')) {
-      return `## Inventory Summary
+      return isArabic ? `## ملخص المخزون
+
+- **إجمالي الوحدات:** ${store.kpis.totalSKUs}
+- **إجمالي الإيرادات:** $${Math.round(store.kpis.totalRevenue).toLocaleString()}
+- **متوسط تغطية المخزون:** ${store.kpis.avgCoverage.toFixed(1)} شهر
+- **دقة التوقعات:** ${store.kpis.forecastAccuracy.toFixed(1)}%
+
+**أهم الفئات:**
+${store.topCategories.slice(0, 5).map(c => `- **${c.name}**: $${Math.round(c.value).toLocaleString()}`).join('\n')}
+
+**أعلى مستويات المخزون:**
+${store.materials.sort((a, b) => b.currentStock - a.currentStock).slice(0, 5).map(m => `- **${m.id}** (${m.description}): ${m.currentStock} وحدة`).join('\n')}`
+      : `## Inventory Summary
 
 - **Total SKUs:** ${store.kpis.totalSKUs}
 - **Total Revenue:** $${Math.round(store.kpis.totalRevenue).toLocaleString()}
@@ -493,7 +552,14 @@ ${store.materials.sort((a, b) => b.currentStock - a.currentStock).slice(0, 5).ma
 
     // Materials / SKUs / products
     if (lowerMsg.includes('material') || lowerMsg.includes('sku') || lowerMsg.includes('product')) {
-      return `## Material Summary
+      return isArabic ? `## ملخص المواد
+
+**إجمالي الوحدات:** ${store.kpis.totalSKUs}
+
+**أهم 10 حسب حجم المبيعات:**
+${store.materials.sort((a, b) => b.totalSales - a.totalSales).slice(0, 10).map((m, i) => `${i + 1}. **${m.id}** — ${m.description}
+   - الفئة: ${m.category} | إجمالي المبيعات: ${m.totalSales.toLocaleString()} | المتوسط/شهر: ${Math.round(m.avgMonthlySales)} | المخزون: ${m.currentStock} | السعر: $${m.price}`).join('\n\n')}`
+      : `## Material Summary
 
 **Total SKUs:** ${store.kpis.totalSKUs}
 
@@ -504,7 +570,13 @@ ${store.materials.sort((a, b) => b.totalSales - a.totalSales).slice(0, 10).map((
 
     // Trends / monthly
     if (lowerMsg.includes('trend') || lowerMsg.includes('monthly')) {
-      return `## Monthly Trends
+      return isArabic ? `## الاتجاهات الشهرية
+
+${store.monthlyTrend.map(m => `- **${m.month}**: فعلي ${m.actual.toLocaleString()}, توقع ${m.forecast.toLocaleString()}, طلبات ${m.orders.toLocaleString()}`).join('\n')}
+
+**إجمالي الطلبات:** ${store.kpis.totalOrders.toLocaleString()}
+**دقة التوقعات:** ${store.kpis.forecastAccuracy.toFixed(1)}%`
+      : `## Monthly Trends
 
 ${store.monthlyTrend.map(m => `- **${m.month}**: Actual ${m.actual.toLocaleString()}, Forecast ${m.forecast.toLocaleString()}, Orders ${m.orders.toLocaleString()}`).join('\n')}
 
@@ -514,7 +586,12 @@ ${store.monthlyTrend.map(m => `- **${m.month}**: Actual ${m.actual.toLocaleStrin
 
     // Categories
     if (lowerMsg.includes('category')) {
-      return `## Category Breakdown
+      return isArabic ? `## تفصيل الفئات
+
+${store.topCategories.map(c => `- **${c.name}**: $${Math.round(c.value).toLocaleString()}`).join('\n')}
+
+**إجمالي الفئات:** ${store.topCategories.length}`
+      : `## Category Breakdown
 
 ${store.topCategories.map(c => `- **${c.name}**: $${Math.round(c.value).toLocaleString()}`).join('\n')}
 
@@ -522,7 +599,25 @@ ${store.topCategories.map(c => `- **${c.name}**: $${Math.round(c.value).toLocale
     }
 
     // Default data-driven response when store exists
-    return `## Data Summary
+    return isArabic ? `## ملخص البيانات
+
+بناءً على ملفك المحمل (**${data?.name || store.fileName}**):
+
+### المؤشرات الرئيسية
+- **إجمالي الوحدات:** ${store.kpis.totalSKUs}
+- **إجمالي الإيرادات:** $${Math.round(store.kpis.totalRevenue).toLocaleString()}
+- **دقة التوقعات:** ${store.kpis.forecastAccuracy.toFixed(1)}%
+- **متوسط تغطية المخزون:** ${store.kpis.avgCoverage.toFixed(1)} شهر
+- **إجمالي الطلبات:** ${store.kpis.totalOrders.toLocaleString()}
+
+### أهم 5 مواد
+${store.materials.sort((a, b) => b.totalSales - a.totalSales).slice(0, 5).map(m => `- **${m.id}** (${m.description}): ${m.totalSales.toLocaleString()} وحدة مباعة، $${Math.round(m.totalSales * m.price).toLocaleString()} إيراد`).join('\n')}
+
+### الاتجاه الشهري
+${store.monthlyTrend.map(m => `- **${m.month}**: فعلي ${m.actual.toLocaleString()}, توقع ${m.forecast.toLocaleString()}`).join('\n')}
+
+*اسألني عن تصنيف ABC، تغطية المخزون، دقة التوقعات، أو مواد محددة لمزيد من التفاصيل.*`
+      : `## Data Summary
 
 Based on your uploaded file (**${data?.name || store.fileName}**):
 
@@ -544,35 +639,59 @@ ${store.monthlyTrend.map(m => `- **${m.month}**: Actual ${m.actual.toLocaleStrin
 
   // Raw-data fallback (no parsed store)
   if (lowerMsg.includes('order value') && (lowerMsg.includes('month') || lowerMsg.includes('ytd'))) {
-    return `**Total Revenue (YTD):** $${totalRevenue.toLocaleString()}\n\nBased on ${rows.length.toLocaleString()} records.`;
+    return isArabic 
+      ? `**إجمالي الإيرادات (السنة):** $${totalRevenue.toLocaleString()}\n\nبناءً على ${rows.length.toLocaleString()} سجل.`
+      : `**Total Revenue (YTD):** $${totalRevenue.toLocaleString()}\n\nBased on ${rows.length.toLocaleString()} records.`;
   }
 
   if (lowerMsg.includes('target') && (lowerMsg.includes('sales') || lowerMsg.includes('order'))) {
     const gap = totalTarget - totalRevenue;
     const achievement = totalTarget > 0 ? (totalRevenue / totalTarget * 100).toFixed(1) : 'N/A';
-    return `| Target | $${totalTarget.toLocaleString()} |\n| Actual | $${totalRevenue.toLocaleString()} |\n| Gap | $${gap.toLocaleString()} |\n| Achievement | ${achievement}% |`;
+    return isArabic 
+      ? `| المستهدف | $${totalTarget.toLocaleString()} |\n| الفعلي | $${totalRevenue.toLocaleString()} |\n| الفجوة | $${gap.toLocaleString()} |\n| الإنجاز | ${achievement}% |`
+      : `| Target | $${totalTarget.toLocaleString()} |\n| Actual | $${totalRevenue.toLocaleString()} |\n| Gap | $${gap.toLocaleString()} |\n| Achievement | ${achievement}% |`;
   }
 
   if (lowerMsg.includes('forecast') || lowerMsg.includes('full year') || lowerMsg.includes('projection')) {
     const monthlyAvg = totalRevenue / 12;
-    return `**Projected Revenue:** $${(monthlyAvg * 12).toLocaleString()} (based on current average of $${monthlyAvg.toLocaleString()}/month)`;
+    return isArabic 
+      ? `**الإيرادات المتوقعة:** $${(monthlyAvg * 12).toLocaleString()} (بناءً على المتوسط الحالي $${monthlyAvg.toLocaleString()}/شهر)`
+      : `**Projected Revenue:** $${(monthlyAvg * 12).toLocaleString()} (based on current average of $${monthlyAvg.toLocaleString()}/month)`;
   }
 
   if (lowerMsg.includes('country') || lowerMsg.includes('market') || lowerMsg.includes('region')) {
-    if (!countryCol) return `No country/region column found in your data. Available columns: ${headers.join(', ')}`;
+    if (!countryCol) return isArabic 
+      ? `لم يتم العثور على عمود الدولة/المنطقة في بياناتك. الأعمدة المتاحة: ${headers.join(', ')}`
+      : `No country/region column found in your data. Available columns: ${headers.join(', ')}`;
   }
 
   if (lowerMsg.includes('container') || lowerMsg.includes('transit') || lowerMsg.includes('shipment')) {
-    return `Container tracking requires shipment-specific columns (Container, ETD, ETA, Destination). Your current columns: ${headers.join(', ')}`;
+    return isArabic 
+      ? `يتطلب تتبع الحاويات أعمدة محددة للشحنات (الحاوية، تاريخ المغادرة، تاريخ الوصول، الوجهة). أعمدتك الحالية: ${headers.join(', ')}`
+      : `Container tracking requires shipment-specific columns (Container, ETD, ETA, Destination). Your current columns: ${headers.join(', ')}`;
   }
 
   if (lowerMsg.includes('p&l') || lowerMsg.includes('profit and loss') || lowerMsg.includes('margin')) {
     const margin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 'N/A';
-    return `| Revenue | $${totalRevenue.toLocaleString()} | 100% |\n${profitCol ? `| Gross Profit | $${totalProfit.toLocaleString()} | ${margin}% |` : ''}`;
+    return isArabic 
+      ? `| الإيرادات | $${totalRevenue.toLocaleString()} | 100% |\n${profitCol ? `| الربح الإجمالي | $${totalProfit.toLocaleString()} | ${margin}% |` : ''}`
+      : `| Revenue | $${totalRevenue.toLocaleString()} | 100% |\n${profitCol ? `| Gross Profit | $${totalProfit.toLocaleString()} | ${margin}% |` : ''}`;
   }
 
   // Ultimate default
-  return `## Analysis Results
+  return isArabic 
+    ? `## نتائج التحليل
+
+بناءً على **${data?.name || 'البيانات المحملة'}** (${rows.length.toLocaleString()} صف):
+
+${revenueCol ? `- **إجمالي الإيرادات:** $${totalRevenue.toLocaleString()}` : ''}
+${profitCol ? `- **إجمالي الربح:** $${totalProfit.toLocaleString()}` : ''}
+${targetCol ? `- **إجمالي المستهدف:** $${totalTarget.toLocaleString()}` : ''}
+
+**الأعمدة المكتشفة:** ${headers.join(', ')}
+
+حاول السؤال عن الإيرادات، المستهدف، التوقعات، أو قم بتحميل ملف يحتوي على أعمدة المواد/الوحدات للحصول على رؤى المخزون.`
+    : `## Analysis Results
 
 Based on **${data?.name || 'uploaded data'}** (${rows.length.toLocaleString()} rows):
 

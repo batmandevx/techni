@@ -10,7 +10,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/header';
 
 const PAGE_TITLES: Record<string, { title: string; sub: string }> = {
-  '/': { title: 'Dashboard', sub: 'S&OP Command Centre' },
+  '/main': { title: 'Dashboard', sub: 'S&OP Command Centre' },
   '/abc-dashboard': { title: 'ABC Analysis', sub: 'Inventory Classification' },
   '/forecasting': { title: 'Forecasting', sub: 'Demand Planning' },
   '/optimizer': { title: 'Order Optimizer', sub: 'Reorder Intelligence' },
@@ -39,8 +39,8 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auth pages render without layout
-  if (pathname?.startsWith('/auth') || pathname?.startsWith('/sign-in') || pathname?.startsWith('/sign-up')) {
+  // Auth and Landing pages render without layout
+  if (pathname === '/' || pathname?.startsWith('/auth') || pathname?.startsWith('/sign-in') || pathname?.startsWith('/sign-up')) {
     return <>{children}</>;
   }
 
