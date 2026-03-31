@@ -191,7 +191,7 @@ If the problem persists, please check that your data is properly formatted.`,
 
   const exportChat = () => {
     const chatContent = messages.map(m => 
-      `${m.role === 'model' ? 'AI' : 'User'} (${m.timestamp.toLocaleString()}):\n${m.content}\n\n`
+      `${m.role === 'model' ? 'AI' : 'User'} (${m.timestamp?.toLocaleString() ?? 'Unknown time'}):\n${m.content}\n\n`
     ).join('---\n\n');
     
     const blob = new Blob([chatContent], { type: 'text/plain' });
@@ -460,7 +460,7 @@ If the problem persists, please check that your data is properly formatted.`,
                     </div>
                     
                     <span className="text-[10px] text-slate-500 mt-1 block">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {message.timestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) ?? ''}
                     </span>
                   </div>
                 </motion.div>
