@@ -8,6 +8,7 @@ import {
   Table, Trash2, CheckCircle, BarChart3, Hash
 } from 'lucide-react';
 import { useData } from '@/lib/DataContext';
+import { parseAndStoreUploadedData } from '@/lib/uploadDataStore';
 import Link from 'next/link';
 
 interface UploadFile {
@@ -124,8 +125,12 @@ export default function UploadPage() {
           headers: data.headers || [],
           rows: allRows,
           fileType: fileType as 'xlsx' | 'csv',
+          detectedFormat: data.detectedFormat,
         });
       }
+
+      // Also store in legacy uploadDataStore for pages still reading from it
+      parseAndStoreUploadedData(file.name, data.headers || [], allRows, data.detectedFormat);
 
     } catch (error) {
       console.error('Upload error:', error);

@@ -258,7 +258,7 @@ function computeRadar(materials: ParsedMaterial[]): { data: { subject: string; [
   return { data, keys };
 }
 
-export function parseAndStoreUploadedData(fileName: string, headers: string[], rows: any[], detectedFormat: string): UploadedData {
+export function parseUploadedData(fileName: string, headers: string[], rows: any[], detectedFormat?: string): UploadedData {
   const fmt = detectFormat(headers, rows);
   let parsed: { materials: ParsedMaterial[]; monthlyTrend: MonthlyTrend[]; topCategories: CategoryData[] };
   if (fmt === 'pivot') parsed = parsePivot(headers, rows);
@@ -285,6 +285,11 @@ export function parseAndStoreUploadedData(fileName: string, headers: string[], r
     kpis: { totalSKUs: materials.length, totalRevenue, avgCoverage, forecastAccuracy, totalOrders },
   };
 
+  return data;
+}
+
+export function parseAndStoreUploadedData(fileName: string, headers: string[], rows: any[], detectedFormat?: string): UploadedData {
+  const data = parseUploadedData(fileName, headers, rows, detectedFormat);
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
   return data;
 }

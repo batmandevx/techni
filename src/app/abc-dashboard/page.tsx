@@ -10,10 +10,7 @@ import {
   TrendingDown, Zap, ChevronRight, Target
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { 
-  MATERIALS, 
-  HISTORICAL_DATA,
-} from '@/lib/mock-data';
+import { useData } from '@/lib/DataContext';
 import { 
   performABCAnalysis, 
   getABCSummary,
@@ -207,6 +204,7 @@ export default function ABCDashboardPage() {
   const [showAgeConfig, setShowAgeConfig] = useState(false);
   const [ageConfig, setAgeConfig] = useState<InventoryAgeMasterConfig>(getInventoryAgeMasterConfig());
   const [uploadedData, setUploadedData] = useState<UploadedData | null>(null);
+  const { materials, historicalData, hasUploadedData } = useData();
 
   useEffect(() => {
     setTimeout(() => {
@@ -217,39 +215,28 @@ export default function ABCDashboardPage() {
 
   const materialsForABC = useMemo(() => {
     // Use uploaded materials when available
-    if (uploadedData && uploadedData.materials.length > 0) {
-      return uploadedData.materials.map(m => ({
-        id: m.id,
-        description: m.description,
-        priceUSD: Math.max(m.price, 1),
-        category: m.category,
-        historicalSales: m.monthlySales.length > 0 ? m.monthlySales : [m.totalSales],
-        historicalForecasts: m.monthlySales.length > 0 ? m.monthlySales.map(s => s * 1.05) : [m.totalSales * 1.05],
-        currentStock: m.currentStock > 0 ? m.currentStock : m.avgMonthlySales * 2,
-        batchDate: undefined as string | undefined,
-        expiryDate: undefined as string | undefined,
-        forecastDemand: m.avgMonthlySales,
-      }));
+    if (hasUploadedData && materials.length > 0) {
+      return materials.map(m => {
+        const history = historicalData[m.id] || [];
+        const latest = history[history.length - 1] || { openingStock: 1000, stockInTransit: 200, actualSales: 500, forecast: 500 };
+        const currentStock = latest.openingStock + latest.stockInTransit - latest.actualSales;
+        const monthlySales = history.map((h: any) => h.actualSales).filter((s: number) => s > 0);
+        return {
+          id: m.id,
+          description: m.description,
+          priceUSD: Math.max(m.priceUSD || 1, 1),
+          category: m.category || 'Uncategorized',
+          historicalSales: monthlySales.length > 0 ? monthlySales : [latest.actualSales || 0],
+          historicalForecasts: history.map((h: any) => h.forecast || 0),
+          currentStock: currentStock > 0 ? currentStock : 0,
+          batchDate: (m as any).batchDate as string | undefined,
+          expiryDate: (m as any).expiryDate as string | undefined,
+          forecastDemand: latest.forecast || 0,
+        };
+      });
     }
-    // Fallback to mock data
-    return MATERIALS.map(mat => {
-      const history = HISTORICAL_DATA[mat.id] || [];
-      const latest = history[history.length - 1] || { openingStock: 1000, stockInTransit: 200, actualSales: 500 };
-      const currentStock = latest.openingStock + latest.stockInTransit - latest.actualSales;
-      return {
-        id: mat.id,
-        description: mat.description,
-        priceUSD: mat.priceUSD,
-        category: mat.category,
-        historicalSales: history.map((h: any) => h.actualSales).filter((s: number) => s > 0),
-        historicalForecasts: history.map((h: any) => h.forecast),
-        currentStock,
-        batchDate: mat.batchDate,
-        expiryDate: mat.expiryDate,
-        forecastDemand: latest.forecast || 500,
-      };
-    });
-  }, [uploadedData]);
+    return [];
+  }, [materials, historicalData, hasUploadedData]);
 
   const abcResults = useMemo(() => performABCAnalysis(materialsForABC), [materialsForABC]);
   

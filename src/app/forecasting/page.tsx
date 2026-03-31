@@ -300,7 +300,7 @@ export default function ForecastingPage() {
               style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.08)' }}
             >
               <option value="all">All SKUs</option>
-              {MATERIALS.map(m => <option key={m.id} value={m.id}>{m.description.split(' ').slice(0, 3).join(' ')}</option>)}
+              {materials.map(m => <option key={m.id} value={m.id}>{m.description.split(' ').slice(0, 3).join(' ')}</option>)}
             </select>
           }
         >

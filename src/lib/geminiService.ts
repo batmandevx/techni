@@ -1,6 +1,7 @@
 'use client';
 
-import { DataSummary, UploadedData } from './DataContext';
+import { DataSummary, UploadedData, DashboardData } from './DataContext';
+import { getUploadedData, UploadedData as StoreUploadedData } from './uploadDataStore';
 
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
@@ -14,36 +15,26 @@ export interface SOPDataContext {
   uploadedFiles: UploadedData[];
   currentData: UploadedData | null;
   summary?: DataSummary;
+  dashboardData?: DashboardData;
+  storeData?: StoreUploadedData | null;
 }
 
 // Comprehensive S&OP system prompt
-const SOP_SYSTEM_PROMPT = `You are an expert S&OP (Sales & Operations Planning) AI Assistant for Tenchi. You have access to uploaded sales, inventory, and operational data.
+const SOP_SYSTEM_PROMPT = `You are TenchiOne AI, an expert S&OP (Sales & Operations Planning) analyst. You have been given a specific dataset uploaded by the user.
 
-Your capabilities include:
-1. Sales Analysis: Order values, revenue, profit margins, trends
-2. Forecasting: Demand predictions, full-year projections
-3. Inventory Management: Stock levels, ABC classification, coverage analysis
-4. Target vs Actual: Performance tracking, gap analysis
-5. Geographic Analysis: Country-wise, region-wise performance
-6. Container/Logistics: In-transit tracking, ETA, destination analysis
-7. Financial Analysis: P&L breakdowns, cost analysis
-8. Market Intelligence: Competition, pricing, demand hotspots
-9. Supply Chain: Port congestion, freight forecasts, vendor analysis
-
-When responding:
-- Use markdown formatting for readability
-- Present data in tables when comparing multiple values
-- Provide actionable insights and recommendations
-- Reference specific data points from the context
-- Suggest next steps or follow-up questions
-- Be professional yet conversational
-
-If data is not available, clearly state what information would be needed to answer the question.`;
+CRITICAL INSTRUCTIONS:
+1. You MUST answer EVERY question using ONLY the data provided in the context below.
+2. Do NOT give generic definitions, templates, or advice. The user wants facts from their file.
+3. Always cite specific numbers, SKUs, months, and categories from the data.
+4. If the user asks a question and the exact answer isn't in the data, calculate it from the data provided (e.g., sums, averages, percentages) and state your calculation.
+5. Only say "data not available" if the uploaded context truly lacks the necessary columns/values.
+6. Use markdown tables for comparisons and lists.
+7. Be concise but specific. Start with the direct answer, then add 1-2 sentences of insight.`;
 
 // Build context from uploaded data
 function buildDataContext(context: SOPDataContext): string {
   if (!context.currentData && (!context.uploadedFiles || context.uploadedFiles.length === 0)) {
-    return 'No data has been uploaded yet. The user needs to upload Excel/CSV files first.';
+    return 'No data has been uploaded yet.';
   }
 
   const data = context.currentData || context.uploadedFiles[0];
@@ -51,53 +42,55 @@ function buildDataContext(context: SOPDataContext): string {
 
   const rows = data.rows || [];
   const headers = data.headers || [];
-  
+  const db = context.dashboardData;
+  const store = context.storeData;
+
   // Find key columns
-  const revenueCol = headers.find(h => 
-    h.toLowerCase().includes('revenue') || h.toLowerCase().includes('sales') || 
+  const revenueCol = headers.find(h =>
+    h.toLowerCase().includes('revenue') || h.toLowerCase().includes('sales') ||
     h.toLowerCase().includes('amount') || h.toLowerCase().includes('total')
   );
-  const quantityCol = headers.find(h => 
-    h.toLowerCase().includes('quantity') || h.toLowerCase().includes('qty') || 
+  const quantityCol = headers.find(h =>
+    h.toLowerCase().includes('quantity') || h.toLowerCase().includes('qty') ||
     h.toLowerCase().includes('count') || h.toLowerCase().includes('units')
   );
-  const productCol = headers.find(h => 
-    h.toLowerCase().includes('product') || h.toLowerCase().includes('item') || 
+  const productCol = headers.find(h =>
+    h.toLowerCase().includes('product') || h.toLowerCase().includes('item') ||
     h.toLowerCase().includes('sku') || h.toLowerCase().includes('name')
   );
-  const categoryCol = headers.find(h => 
-    h.toLowerCase().includes('category') || h.toLowerCase().includes('type') || 
+  const categoryCol = headers.find(h =>
+    h.toLowerCase().includes('category') || h.toLowerCase().includes('type') ||
     h.toLowerCase().includes('group')
   );
-  const dateCol = headers.find(h => 
-    h.toLowerCase().includes('date') || h.toLowerCase().includes('month') || 
+  const dateCol = headers.find(h =>
+    h.toLowerCase().includes('date') || h.toLowerCase().includes('month') ||
     h.toLowerCase().includes('year')
   );
-  const customerCol = headers.find(h => 
-    h.toLowerCase().includes('customer') || h.toLowerCase().includes('client') || 
+  const customerCol = headers.find(h =>
+    h.toLowerCase().includes('customer') || h.toLowerCase().includes('client') ||
     h.toLowerCase().includes('buyer')
   );
-  const countryCol = headers.find(h => 
-    h.toLowerCase().includes('country') || h.toLowerCase().includes('region') || 
+  const countryCol = headers.find(h =>
+    h.toLowerCase().includes('country') || h.toLowerCase().includes('region') ||
     h.toLowerCase().includes('market')
   );
-  const profitCol = headers.find(h => 
-    h.toLowerCase().includes('profit') || h.toLowerCase().includes('margin') || 
+  const profitCol = headers.find(h =>
+    h.toLowerCase().includes('profit') || h.toLowerCase().includes('margin') ||
     h.toLowerCase().includes('gp')
   );
-  const costCol = headers.find(h => 
+  const costCol = headers.find(h =>
     h.toLowerCase().includes('cost') || h.toLowerCase().includes('cogs')
   );
-  const targetCol = headers.find(h => 
-    h.toLowerCase().includes('target') || h.toLowerCase().includes('budget') || 
+  const targetCol = headers.find(h =>
+    h.toLowerCase().includes('target') || h.toLowerCase().includes('budget') ||
     h.toLowerCase().includes('plan')
   );
-  const containerCol = headers.find(h => 
-    h.toLowerCase().includes('container') || h.toLowerCase().includes('shipment') || 
+  const containerCol = headers.find(h =>
+    h.toLowerCase().includes('container') || h.toLowerCase().includes('shipment') ||
     h.toLowerCase().includes('etd') || h.toLowerCase().includes('eta')
   );
-  const inventoryCol = headers.find(h => 
-    h.toLowerCase().includes('inventory') || h.toLowerCase().includes('stock') || 
+  const inventoryCol = headers.find(h =>
+    h.toLowerCase().includes('inventory') || h.toLowerCase().includes('stock') ||
     h.toLowerCase().includes('coverage')
   );
 
@@ -185,11 +178,10 @@ function buildDataContext(context: SOPDataContext): string {
   }
 
   // Build context string
-  let contextStr = `UPLOADED DATA SUMMARY:
-File: ${data.name}
-Total Rows: ${rows.length.toLocaleString()}
-Date Range: ${dateRange}
-Columns: ${headers.join(', ')}
+  let contextStr = `UPLOADED FILE: ${data.name}
+TOTAL ROWS: ${rows.length.toLocaleString()}
+DATE RANGE: ${dateRange}
+COLUMNS: ${headers.join(', ')}
 
 KEY METRICS:
 - Total Revenue: $${totalRevenue.toLocaleString()}
@@ -200,25 +192,80 @@ KEY METRICS:
 - Unique Customers: ${uniqueCustomers.size}
 - Unique Countries/Markets: ${uniqueCountries.size}
 - Unique Categories: ${uniqueCategories.size}
-
-DETECTED COLUMNS:
-- Revenue/Sales: ${revenueCol || 'Not found'}
-- Profit/Margin: ${profitCol || 'Not found'}
-- Cost/COGS: ${costCol || 'Not found'}
-- Quantity: ${quantityCol || 'Not found'}
-- Target/Budget: ${targetCol || 'Not found'}
-- Product/SKU: ${productCol || 'Not found'}
-- Category: ${categoryCol || 'Not found'}
-- Date: ${dateCol || 'Not found'}
-- Customer: ${customerCol || 'Not found'}
-- Country/Region: ${countryCol || 'Not found'}
-- Container/Shipment: ${containerCol || 'Not found'}
-- Inventory/Stock: ${inventoryCol || 'Not found'}
 `;
+
+  // Add parsed material/store data if available
+  if (store) {
+    contextStr += `\n--- PARSED INVENTORY / SKU DATA ---\n`;
+    contextStr += `- Total SKUs: ${store.kpis.totalSKUs}\n`;
+    contextStr += `- Total Revenue: $${Math.round(store.kpis.totalRevenue).toLocaleString()}\n`;
+    contextStr += `- Forecast Accuracy: ${store.kpis.forecastAccuracy.toFixed(1)}%\n`;
+    contextStr += `- Avg Stock Coverage: ${store.kpis.avgCoverage.toFixed(1)} months\n`;
+    contextStr += `- Total Orders: ${store.kpis.totalOrders.toLocaleString()}\n`;
+    if (store.materials.length > 0) {
+      contextStr += `\nMATERIALS:\n`;
+      store.materials.forEach(m => {
+        contextStr += `- ${m.id}: ${m.description} | Category: ${m.category} | Total Sales: ${m.totalSales.toLocaleString()} | Avg/Month: ${Math.round(m.avgMonthlySales)} | Stock: ${m.currentStock} | Price: $${m.price}\n`;
+      });
+    }
+    if (store.monthlyTrend.length > 0) {
+      contextStr += `\nMONTHLY TREND:\n`;
+      store.monthlyTrend.forEach(m => {
+        contextStr += `- ${m.month}: Actual ${m.actual.toLocaleString()}, Forecast ${m.forecast.toLocaleString()}, Orders ${m.orders}\n`;
+      });
+    }
+    if (store.abcDistribution.length > 0) {
+      contextStr += `\nABC CLASSIFICATION:\n`;
+      store.abcDistribution.forEach(a => {
+        contextStr += `- ${a.name}: ${a.value} SKUs\n`;
+      });
+    }
+    if (store.topCategories.length > 0) {
+      contextStr += `\nTOP CATEGORIES:\n`;
+      store.topCategories.forEach(c => {
+        contextStr += `- ${c.name}: $${Math.round(c.value).toLocaleString()}\n`;
+      });
+    }
+  }
+
+  // Add dashboard data if available
+  if (db && db.totalOrders > 0) {
+    contextStr += `\n--- DASHBOARD KPIs ---\n`;
+    contextStr += `- Total Orders: ${db.totalOrders.toLocaleString()}\n`;
+    contextStr += `- Revenue: $${db.revenue.toLocaleString()}\n`;
+    contextStr += `- Customers: ${db.customers.toLocaleString()}\n`;
+    contextStr += `- Products: ${db.products.toLocaleString()}\n`;
+    contextStr += `- Forecast Accuracy: ${db.forecastAccuracy}%\n`;
+    contextStr += `- Inventory Value: $${db.inventoryValue.toLocaleString()}\n`;
+    if (db.topProducts.length > 0) {
+      contextStr += `\nTOP PRODUCTS:\n`;
+      db.topProducts.forEach(p => {
+        contextStr += `- ${p.name}: Sales $${p.sales.toLocaleString()}, Qty ${p.quantity.toLocaleString()}, Growth ${p.growth}%\n`;
+      });
+    }
+    if (db.categoryDistribution.length > 0) {
+      contextStr += `\nCATEGORY DISTRIBUTION:\n`;
+      db.categoryDistribution.forEach(c => {
+        contextStr += `- ${c.name}: ${c.value} (${c.percentage || 0}%)\n`;
+      });
+    }
+    if (db.abcClassification.length > 0) {
+      contextStr += `\nDASHBOARD ABC CLASSIFICATION:\n`;
+      db.abcClassification.forEach(a => {
+        contextStr += `- ${a.name}: ${a.value} (${a.percentage}%)\n`;
+      });
+    }
+    if (db.inventoryByCategory.length > 0) {
+      contextStr += `\nINVENTORY BY CATEGORY:\n`;
+      db.inventoryByCategory.forEach(i => {
+        contextStr += `- ${i.category}: Value $${i.value.toLocaleString()}, Turnover ${i.turnover}\n`;
+      });
+    }
+  }
 
   // Add monthly data if available
   if (Object.keys(monthlyData).length > 0) {
-    contextStr += '\nMONTHLY BREAKDOWN:\n';
+    contextStr += '\n--- MONTHLY BREAKDOWN ---\n';
     Object.entries(monthlyData).forEach(([month, data]) => {
       contextStr += `${month}: Revenue $${data.revenue.toLocaleString()}, Profit $${data.profit.toLocaleString()}, Qty ${data.quantity.toLocaleString()}\n`;
     });
@@ -226,7 +273,7 @@ DETECTED COLUMNS:
 
   // Add country data if available
   if (Object.keys(countryData).length > 0) {
-    contextStr += '\nCOUNTRY/MARKET BREAKDOWN:\n';
+    contextStr += '\n--- COUNTRY/MARKET BREAKDOWN ---\n';
     Object.entries(countryData).slice(0, 10).forEach(([country, data]) => {
       contextStr += `${country}: Revenue $${data.revenue.toLocaleString()}, Profit $${data.profit.toLocaleString()}\n`;
     });
@@ -234,14 +281,14 @@ DETECTED COLUMNS:
 
   // Add category data if available
   if (Object.keys(categoryData).length > 0) {
-    contextStr += '\nCATEGORY BREAKDOWN:\n';
+    contextStr += '\n--- CATEGORY BREAKDOWN ---\n';
     Object.entries(categoryData).slice(0, 10).forEach(([cat, data]) => {
       contextStr += `${cat}: Revenue $${data.revenue.toLocaleString()}, Profit $${data.profit.toLocaleString()}, Count ${data.count}\n`;
     });
   }
 
   // Add sample rows
-  contextStr += '\nSAMPLE DATA (First 3 rows):\n';
+  contextStr += '\n--- SAMPLE ROWS (First 3) ---\n';
   rows.slice(0, 3).forEach((row, i) => {
     contextStr += `Row ${i + 1}: ${JSON.stringify(row)}\n`;
   });
@@ -257,14 +304,18 @@ export async function generateGeminiResponse(
 ): Promise<string> {
   try {
     const dataContext = buildDataContext(context);
-    
+
+    if (dataContext === 'No data has been uploaded yet.') {
+      return 'No data has been uploaded yet. Please upload an Excel or CSV file first.';
+    }
+
     const prompt = `${SOP_SYSTEM_PROMPT}
 
 ${dataContext}
 
 USER QUESTION: ${userMessage}
 
-Provide a comprehensive answer based on the available data. If specific data is not available, clearly state what information is missing and provide general guidance or calculations based on available data.`;
+IMPORTANT: Answer using ONLY the data above. Cite specific numbers and names from the dataset.`;
 
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
@@ -279,7 +330,7 @@ Provide a comprehensive answer based on the available data. If specific data is 
           }
         ],
         generationConfig: {
-          temperature: 0.7,
+          temperature: 0.2,
           maxOutputTokens: 4096,
           topP: 0.8,
           topK: 40,
@@ -312,7 +363,7 @@ Provide a comprehensive answer based on the available data. If specific data is 
     }
 
     const data = await response.json();
-    
+
     if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
       return data.candidates[0].content.parts[0].text;
     } else {
@@ -329,222 +380,189 @@ Provide a comprehensive answer based on the available data. If specific data is 
 function generateFallbackResponse(userMessage: string, context: SOPDataContext): string {
   const lowerMsg = userMessage.toLowerCase();
   const data = context.currentData || context.uploadedFiles?.[0];
-  
-  if (!data) {
-    return `I apologize, but no data has been uploaded yet. Please upload your Excel or CSV files first so I can analyze your S&OP data and answer your questions.
+  const store = context.storeData;
+  const db = context.dashboardData;
 
-You can upload files from the Upload page. Once uploaded, I'll be able to help you with:
-- Sales and order analysis
-- Profit and margin calculations
-- Forecasting and projections
-- Target vs actual comparisons
-- Inventory analysis
-- And much more!`;
+  if (!data && !store) {
+    return `No data has been uploaded yet. Please upload your Excel or CSV files first.`;
   }
 
-  const rows = data.rows || [];
-  const headers = data.headers || [];
-  
-  // Find columns
-  const revenueCol = headers.find(h => 
-    h.toLowerCase().includes('revenue') || h.toLowerCase().includes('sales') || 
-    h.toLowerCase().includes('amount')
+  const rows = data?.rows || [];
+  const headers = data?.headers || [];
+
+  // Revenue / profit helpers
+  const revenueCol = headers.find(h =>
+    h.toLowerCase().includes('revenue') || h.toLowerCase().includes('sales') || h.toLowerCase().includes('amount')
   );
-  const profitCol = headers.find(h => 
+  const profitCol = headers.find(h =>
     h.toLowerCase().includes('profit') || h.toLowerCase().includes('margin')
   );
-  const targetCol = headers.find(h => 
+  const targetCol = headers.find(h =>
     h.toLowerCase().includes('target') || h.toLowerCase().includes('budget')
   );
-  const countryCol = headers.find(h => 
+  const countryCol = headers.find(h =>
     h.toLowerCase().includes('country') || h.toLowerCase().includes('region')
   );
-  const dateCol = headers.find(h => 
-    h.toLowerCase().includes('date') || h.toLowerCase().includes('month')
-  );
 
-  // Calculate totals
   let totalRevenue = 0;
   let totalProfit = 0;
   let totalTarget = 0;
-  
   rows.forEach(row => {
     if (revenueCol) totalRevenue += parseFloat(row[revenueCol]) || 0;
     if (profitCol) totalProfit += parseFloat(row[profitCol]) || 0;
     if (targetCol) totalTarget += parseFloat(row[targetCol]) || 0;
   });
 
-  // Handle specific query types
+  // If we have parsed store data, use it for most inventory/forecasting questions
+  if (store) {
+    // ABC / classification
+    if (lowerMsg.includes('abc') || lowerMsg.includes('classification')) {
+      const abcRows = store.abcDistribution.map(a => `| ${a.name} | ${a.value} |`).join('\n');
+      return `## ABC Classification
+
+| Class | SKU Count |
+|-------|-----------|
+${abcRows}
+
+**Total SKUs:** ${store.kpis.totalSKUs}
+
+**Top Materials by Revenue:**
+${store.materials.slice(0, 5).map(m => `- **${m.id}** (${m.description}): $${Math.round(m.totalSales * Math.max(m.price, 1)).toLocaleString()}`).join('\n')}`;
+    }
+
+    // Coverage / stock
+    if (lowerMsg.includes('coverage') || lowerMsg.includes('stock coverage')) {
+      const lowCoverage = store.materials.filter(m => m.avgMonthlySales > 0 && (m.currentStock / m.avgMonthlySales) < 1);
+      return `## Stock Coverage
+
+**Average Coverage:** ${store.kpis.avgCoverage.toFixed(1)} months
+
+**Low Coverage Alerts (< 1 month):**
+${lowCoverage.length > 0 ? lowCoverage.map(m => `- **${m.id}** (${m.description}): ${(m.currentStock / m.avgMonthlySales).toFixed(1)} months (Stock: ${m.currentStock}, Avg Sales: ${Math.round(m.avgMonthlySales)})`).join('\n') : '- None'}
+
+**Top 5 by Coverage:**
+${store.materials.filter(m => m.avgMonthlySales > 0).sort((a, b) => (b.currentStock / b.avgMonthlySales) - (a.currentStock / a.avgMonthlySales)).slice(0, 5).map(m => `- **${m.id}**: ${(m.currentStock / m.avgMonthlySales).toFixed(1)} months`).join('\n')}`;
+    }
+
+    // Forecast accuracy
+    if (lowerMsg.includes('forecast accuracy')) {
+      return `## Forecast Accuracy
+
+**Overall:** ${store.kpis.forecastAccuracy.toFixed(1)}%
+
+| Month | Actual | Forecast | Variance |
+|-------|--------|----------|----------|
+${store.monthlyTrend.map(m => `| ${m.month} | ${m.actual.toLocaleString()} | ${m.forecast.toLocaleString()} | ${Math.abs(m.actual - m.forecast).toLocaleString()} |`).join('\n')}`;
+    }
+
+    // Inventory / stock value
+    if (lowerMsg.includes('inventory') || lowerMsg.includes('stock')) {
+      return `## Inventory Summary
+
+- **Total SKUs:** ${store.kpis.totalSKUs}
+- **Total Revenue:** $${Math.round(store.kpis.totalRevenue).toLocaleString()}
+- **Avg Stock Coverage:** ${store.kpis.avgCoverage.toFixed(1)} months
+- **Forecast Accuracy:** ${store.kpis.forecastAccuracy.toFixed(1)}%
+
+**Top Categories:**
+${store.topCategories.slice(0, 5).map(c => `- **${c.name}**: $${Math.round(c.value).toLocaleString()}`).join('\n')}
+
+**Highest Stock Levels:**
+${store.materials.sort((a, b) => b.currentStock - a.currentStock).slice(0, 5).map(m => `- **${m.id}** (${m.description}): ${m.currentStock} units`).join('\n')}`;
+    }
+
+    // Materials / SKUs / products
+    if (lowerMsg.includes('material') || lowerMsg.includes('sku') || lowerMsg.includes('product')) {
+      return `## Material Summary
+
+**Total SKUs:** ${store.kpis.totalSKUs}
+
+**Top 10 by Sales Volume:**
+${store.materials.sort((a, b) => b.totalSales - a.totalSales).slice(0, 10).map((m, i) => `${i + 1}. **${m.id}** — ${m.description}
+   - Category: ${m.category} | Total Sales: ${m.totalSales.toLocaleString()} | Avg/Month: ${Math.round(m.avgMonthlySales)} | Stock: ${m.currentStock} | Price: $${m.price}`).join('\n\n')}`;
+    }
+
+    // Trends / monthly
+    if (lowerMsg.includes('trend') || lowerMsg.includes('monthly')) {
+      return `## Monthly Trends
+
+${store.monthlyTrend.map(m => `- **${m.month}**: Actual ${m.actual.toLocaleString()}, Forecast ${m.forecast.toLocaleString()}, Orders ${m.orders.toLocaleString()}`).join('\n')}
+
+**Total Orders:** ${store.kpis.totalOrders.toLocaleString()}
+**Forecast Accuracy:** ${store.kpis.forecastAccuracy.toFixed(1)}%`;
+    }
+
+    // Categories
+    if (lowerMsg.includes('category')) {
+      return `## Category Breakdown
+
+${store.topCategories.map(c => `- **${c.name}**: $${Math.round(c.value).toLocaleString()}`).join('\n')}
+
+**Total Categories:** ${store.topCategories.length}`;
+    }
+
+    // Default data-driven response when store exists
+    return `## Data Summary
+
+Based on your uploaded file (**${data?.name || store.fileName}**):
+
+### Key Metrics
+- **Total SKUs:** ${store.kpis.totalSKUs}
+- **Total Revenue:** $${Math.round(store.kpis.totalRevenue).toLocaleString()}
+- **Forecast Accuracy:** ${store.kpis.forecastAccuracy.toFixed(1)}%
+- **Avg Stock Coverage:** ${store.kpis.avgCoverage.toFixed(1)} months
+- **Total Orders:** ${store.kpis.totalOrders.toLocaleString()}
+
+### Top 5 Materials
+${store.materials.sort((a, b) => b.totalSales - a.totalSales).slice(0, 5).map(m => `- **${m.id}** (${m.description}): ${m.totalSales.toLocaleString()} units sold, $${Math.round(m.totalSales * m.price).toLocaleString()} revenue`).join('\n')}
+
+### Monthly Trend
+${store.monthlyTrend.map(m => `- **${m.month}**: Actual ${m.actual.toLocaleString()}, Forecast ${m.forecast.toLocaleString()}`).join('\n')}
+
+*Ask me about ABC classification, stock coverage, forecast accuracy, or specific materials for more details.*`;
+  }
+
+  // Raw-data fallback (no parsed store)
   if (lowerMsg.includes('order value') && (lowerMsg.includes('month') || lowerMsg.includes('ytd'))) {
-    return `## Order Value Analysis
-
-**Total Revenue (YTD):** $${totalRevenue.toLocaleString()}
-
-Based on your uploaded data of ${rows.length.toLocaleString()} records:
-${revenueCol ? `- Revenue column detected: "${revenueCol}"` : '- No revenue column found'}
-${profitCol ? `- Profit column detected: "${profitCol}"` : '- No profit column found'}
-
-**Recommendations:**
-1. Upload data with monthly breakdown for month-wise analysis
-2. Ensure target/budget columns are included for comparison
-3. Add country/region columns for geographic analysis`;
+    return `**Total Revenue (YTD):** $${totalRevenue.toLocaleString()}\n\nBased on ${rows.length.toLocaleString()} records.`;
   }
 
   if (lowerMsg.includes('target') && (lowerMsg.includes('sales') || lowerMsg.includes('order'))) {
     const gap = totalTarget - totalRevenue;
     const achievement = totalTarget > 0 ? (totalRevenue / totalTarget * 100).toFixed(1) : 'N/A';
-    
-    return `## Target vs Sales Analysis
-
-| Metric | Value |
-|--------|-------|
-| Target | $${totalTarget.toLocaleString()} |
-| Actual Sales | $${totalRevenue.toLocaleString()} |
-| Gap | $${gap.toLocaleString()} |
-| Achievement | ${achievement}% |
-
-**Status:** ${parseFloat(achievement) >= 100 ? '[OK] Target Achieved!' : parseFloat(achievement) >= 80 ? '[WARN] Close to Target' : '[ALERT] Below Target'}
-
-**Action Items:**
-${gap > 0 ? `- Need $${gap.toLocaleString()} more to reach target` : '- Target exceeded! Great performance!'}
-- Review underperforming regions/products
-- Consider promotional activities`;
+    return `| Target | $${totalTarget.toLocaleString()} |\n| Actual | $${totalRevenue.toLocaleString()} |\n| Gap | $${gap.toLocaleString()} |\n| Achievement | ${achievement}% |`;
   }
 
   if (lowerMsg.includes('forecast') || lowerMsg.includes('full year') || lowerMsg.includes('projection')) {
-    const currentMonth = new Date().getMonth() + 1;
-    const monthlyAvg = totalRevenue / (dateCol ? 12 : 1);
-    const fullYearProjected = monthlyAvg * 12;
-    
-    return `## Full Year Forecast
-
-**Current Performance:**
-- Revenue to date: $${totalRevenue.toLocaleString()}
-- Monthly Average: $${monthlyAvg.toLocaleString()}
-
-**Full Year Projection:**
-- **Projected Revenue: $${fullYearProjected.toLocaleString()}**
-- Based on current trends and ${rows.length.toLocaleString()} data points
-
-**Growth Scenarios:**
-| Scenario | Projected Revenue |
-|----------|------------------|
-| Conservative (5% growth) | $${(fullYearProjected * 1.05).toLocaleString()} |
-| Moderate (10% growth) | $${(fullYearProjected * 1.1).toLocaleString()} |
-| Aggressive (15% growth) | $${(fullYearProjected * 1.15).toLocaleString()} |
-
-**Note:** For more accurate forecasts, upload historical data from previous years.`;
-  }
-
-  if (lowerMsg.includes('inventory')) {
-    return `## Inventory Analysis
-
-**Note:** Detailed inventory analysis requires specific inventory columns in your data.
-
-From your current data:
-- Total Records: ${rows.length.toLocaleString()}
-${revenueCol ? `- Total Revenue: $${totalRevenue.toLocaleString()}` : ''}
-${profitCol ? `- Total Profit: $${totalProfit.toLocaleString()}` : ''}
-
-**To get inventory insights, please ensure your data includes:**
-- Current stock levels
-- Stock coverage days
-- ABC classification
-- Slow/moving inventory flags
-- Warehouse locations
-
-Would you like me to analyze specific products or categories?`;
+    const monthlyAvg = totalRevenue / 12;
+    return `**Projected Revenue:** $${(monthlyAvg * 12).toLocaleString()} (based on current average of $${monthlyAvg.toLocaleString()}/month)`;
   }
 
   if (lowerMsg.includes('country') || lowerMsg.includes('market') || lowerMsg.includes('region')) {
-    if (!countryCol) {
-      return `## Country/Market Analysis
-
-I don't see a country/region column in your data. To perform country-wise analysis, please ensure your data includes:
-- Country names
-- Region codes
-- Market identifiers
-
-**Current Available Data:**
-- Total Revenue: $${totalRevenue.toLocaleString()}
-- Total Records: ${rows.length.toLocaleString()}
-- Columns: ${headers.join(', ')}
-
-Please upload data with geographic information for country-wise breakdowns.`;
-    }
+    if (!countryCol) return `No country/region column found in your data. Available columns: ${headers.join(', ')}`;
   }
 
   if (lowerMsg.includes('container') || lowerMsg.includes('transit') || lowerMsg.includes('shipment')) {
-    return `## Container/Shipment Status
-
-**Note:** Container tracking requires shipment-specific data.
-
-Please ensure your data includes:
-- Container numbers
-- ETD (Estimated Time of Departure)
-- ETA (Estimated Time of Arrival)
-- Destination ports
-- Shipment values
-- SKU details
-
-**Current Data Summary:**
-- Total Records: ${rows.length.toLocaleString()}
-${revenueCol ? `- Total Shipment Value: $${totalRevenue.toLocaleString()}` : ''}
-
-Would you like to upload shipment tracking data?`;
+    return `Container tracking requires shipment-specific columns (Container, ETD, ETA, Destination). Your current columns: ${headers.join(', ')}`;
   }
 
   if (lowerMsg.includes('p&l') || lowerMsg.includes('profit and loss') || lowerMsg.includes('margin')) {
     const margin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 'N/A';
-    
-    return `## P&L Breakdown
-
-| Line Item | Amount | % of Revenue |
-|-----------|--------|-------------|
-| Revenue | $${totalRevenue.toLocaleString()} | 100% |
-${profitCol ? `| Gross Profit | $${totalProfit.toLocaleString()} | ${margin}% |` : '| Gross Profit | N/A | N/A |'}
-| COGS | ${profitCol ? `$${(totalRevenue - totalProfit).toLocaleString()}` : 'N/A'} | ${profitCol ? `${(100 - parseFloat(margin)).toFixed(1)}%` : 'N/A'} |
-
-**Key Metrics:**
-${profitCol ? `- Gross Margin: ${margin}%` : '- Profit data not available'}
-- Revenue per Record: $${(totalRevenue / rows.length).toFixed(2)}
-
-**To complete the P&L analysis, please include:**
-- Cost of Goods Sold (COGS)
-- Operating expenses
-- Logistics costs
-- Marketing expenses
-- Tax amounts`;
+    return `| Revenue | $${totalRevenue.toLocaleString()} | 100% |\n${profitCol ? `| Gross Profit | $${totalProfit.toLocaleString()} | ${margin}% |` : ''}`;
   }
 
-  // Default response
+  // Ultimate default
   return `## Analysis Results
 
-Based on your uploaded data (**${data.name}**):
+Based on **${data?.name || 'uploaded data'}** (${rows.length.toLocaleString()} rows):
 
-### Data Overview
-- **Total Records:** ${rows.length.toLocaleString()}
-- **Columns:** ${headers.length} (${headers.join(', ')})
-
-### Key Metrics
 ${revenueCol ? `- **Total Revenue:** $${totalRevenue.toLocaleString()}` : ''}
 ${profitCol ? `- **Total Profit:** $${totalProfit.toLocaleString()}` : ''}
 ${targetCol ? `- **Total Target:** $${totalTarget.toLocaleString()}` : ''}
 
-### Available Analysis
-I can help you with:
-1. **Sales Analysis** - Revenue trends, growth rates
-2. **Forecasting** - Full year projections
-3. **Target vs Actual** - Performance gaps
-4. **Geographic Analysis** - Country/region performance
-5. **Inventory Insights** - Stock analysis
-6. **P&L Breakdown** - Profitability analysis
+**Columns detected:** ${headers.join(', ')}
 
-**What specific aspect would you like to explore?** Try asking:
-- "Show me target vs sales YTD"
-- "What's my full year forecast?"
-- "Show country-wise profit"
-- "What's my inventory status?"`;
+Try asking about revenue, targets, forecasts, or upload a file with material/SKU columns for inventory insights.`;
 }
 
 // Check if API key is configured

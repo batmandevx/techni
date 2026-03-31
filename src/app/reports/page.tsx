@@ -132,8 +132,8 @@ export default function ReportsPage() {
       doc.setTextColor(100, 100, 100);
       doc.text('Formula: Order Prompt = max(0, (Forecast + Safety Stock) - Current Stock)', 20, currentY + 28);
 
-      const invData = MATERIALS.map(mat => {
-        const latest = HISTORICAL_DATA[mat.id]?.[5];
+      const invData = materials.map(mat => {
+        const latest = historicalData[mat.id]?.[5];
         if (!latest) return [mat.id, mat.description, '-', '-', '-', '-', '-', '-'];
         const result = processInventoryRecord({
           materialId: mat.id,
@@ -254,7 +254,7 @@ export default function ReportsPage() {
       }
 
       // Materials Sheet
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(MATERIALS), 'Materials');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(materials), 'Materials');
 
       // Orders Sheet
       if (orders.length > 0) {
@@ -262,8 +262,8 @@ export default function ReportsPage() {
       }
 
       // Inventory & Order Prompt Sheet
-      const invRows = MATERIALS.flatMap(mat => {
-        const matData = HISTORICAL_DATA[mat.id] || [];
+      const invRows = materials.flatMap(mat => {
+        const matData = historicalData[mat.id] || [];
         return matData.map((d: any) => {
           const result = processInventoryRecord({
             materialId: mat.id,

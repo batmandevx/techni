@@ -1,5 +1,4 @@
 // Excel parser and data validator
-import { CUSTOMERS, MATERIALS } from './mock-data';
 
 export interface ParsedOrder {
   orderId: string;
@@ -46,18 +45,6 @@ export function validateOrder(order: ParsedOrder, existingOrderIds: Set<string>,
   if (!order.customerId) errors.push('Missing Customer_ID');
   if (!order.materialId) errors.push('Missing Material_ID');
   if (!order.quantity || order.quantity <= 0) errors.push('Quantity must be > 0');
-
-  // Validate Customer_ID exists in master data
-  const customer = CUSTOMERS.find(c => c.id === order.customerId);
-  if (order.customerId && !customer) {
-    errors.push(`Invalid Customer_ID: ${order.customerId} does not exist`);
-  }
-
-  // Validate Material_ID exists in master data
-  const material = MATERIALS.find(m => m.id === order.materialId);
-  if (order.materialId && !material) {
-    errors.push(`Invalid Material_ID: ${order.materialId} does not exist`);
-  }
 
   // Check for duplicates
   if (existingOrderIds.has(order.orderId)) {

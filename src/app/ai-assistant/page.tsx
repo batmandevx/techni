@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useData } from '@/lib/DataContext';
 import { generateGeminiResponse, isGeminiConfigured, ChatMessage } from '@/lib/geminiService';
+import { getUploadedData } from '@/lib/uploadDataStore';
 import Link from 'next/link';
 
 const WELCOME_MESSAGE: ChatMessage = {
@@ -136,6 +137,8 @@ export default function AIAssistantPage() {
         uploadedFiles,
         currentData,
         summary: undefined as any,
+        dashboardData,
+        storeData: getUploadedData(),
       };
 
       const response = await generateGeminiResponse(
@@ -173,7 +176,7 @@ If the problem persists, please check that your data is properly formatted.`,
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, uploadedFiles, currentData, messages]);
+  }, [input, isLoading, uploadedFiles, currentData, messages, dashboardData]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

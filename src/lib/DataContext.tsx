@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { parseUploadedData } from '@/lib/uploadDataStore';
 
 // Types
 export interface Material {
@@ -90,6 +91,7 @@ export interface UploadedData {
   rows: any[];
   uploadedAt: Date;
   fileType: 'xlsx' | 'csv' | 'xls';
+  detectedFormat?: string;
   summary?: DataSummary;
 }
 
@@ -292,6 +294,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           setDashboardData(parsed.dashboard);
           setHasRealData(true);
         }
+        if (parsed.materials && parsed.materials.length > 0) {
+          setMaterials(parsed.materials);
+        }
+        if (parsed.historicalData && Object.keys(parsed.historicalData).length > 0) {
+          setHistoricalData(parsed.historicalData);
+        }
       } catch (e) {
         console.error('Failed to load saved data:', e);
       }
@@ -304,10 +312,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('tenchi-uploaded-data', JSON.stringify({
         files: uploadedFiles,
         current: currentData,
-        dashboard: dashboardData
+        dashboard: dashboardData,
+        materials,
+        historicalData,
       }));
     }
-  }, [uploadedFiles, currentData, dashboardData]);
+  }, [uploadedFiles, currentData, dashboardData, materials, historicalData]);
   
   // Fetch all data from APIs
   const refreshData = useCallback(async () => {
@@ -392,9 +402,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Load data on mount
   useEffect(() => {
-    refreshData();
+    const saved = localStorage.getItem('tenchi-uploaded-data');
+    let hasSavedData = false;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        hasSavedData = !!(parsed.materials?.length || parsed.files?.length);
+      } catch {}
+    }
+    if (!hasSavedData) {
+      refreshData();
+    }
   }, []);
   
+  // Parse uploaded file rows into Material[] and HistoricalDataPoint[]
+  const parseFileToContextData = useCallback((file: UploadedData) => {
+    try {
+      const parsed = parseUploadedData(file.name, file.headers, file.rows, file.detectedFormat);
+      const newMaterials: Material[] = parsed.materials.map(m => ({
+        id: m.id,
+        description: m.description,
+        baseUOM: 'EA',
+        salesUOM: 'EA',
+        plant: 'PLANT1',
+        storageLocation: 'STORE1',
+        priceUSD: m.price,
+        category: m.category,
+        currentStock: m.currentStock,
+      }));
+
+      const newHistoricalData: Record<string, HistoricalDataPoint[]> = {};
+      parsed.materials.forEach(m => {
+        newHistoricalData[m.id] = m.monthNames.map((month, i) => ({
+          month,
+          actualSales: m.monthlySales[i] || 0,
+          forecast: Math.round((m.monthlySales[i] || 0) * 1.05),
+          openingStock: i === 0 ? m.currentStock : (m.monthlySales[i - 1] || 0),
+          stockInTransit: 0,
+          safetyStock: Math.round((m.monthlySales[i] || 0) * 0.2),
+        }));
+      });
+
+      return { materials: newMaterials, historicalData: newHistoricalData };
+    } catch (err) {
+      console.error('Failed to parse uploaded file to context data:', err);
+      return { materials: [] as Material[], historicalData: {} as Record<string, HistoricalDataPoint[]> };
+    }
+  }, []);
+
   // Update data from external source
   const updateData = useCallback((newData: any) => {
     if (newData.kpis) setKpis(prev => ({ ...prev, ...newData.kpis }));
@@ -405,6 +460,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   
   // Clear all uploaded data
   const clearUploadedData = useCallback(() => {
+    setUploadedFiles([]);
+    setCurrentData(null);
+    setDashboardData(defaultDashboardData);
+    setHasRealData(false);
+    setMaterials([]);
+    setHistoricalData({});
+    localStorage.removeItem('tenchi-uploaded-data');
     refreshData(); // Reload from database
   }, [refreshData]);
   
@@ -744,13 +806,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setUploadedFiles(prev => [newFile, ...prev]);
     setCurrentData(newFile);
     generateDashboardData(newFile);
-  }, [generateDashboardData]);
+
+    const { materials: parsedMaterials, historicalData: parsedHistoricalData } = parseFileToContextData(newFile);
+    if (parsedMaterials.length > 0) {
+      setMaterials(parsedMaterials);
+      setHistoricalData(parsedHistoricalData);
+      setHasRealData(true);
+    }
+  }, [generateDashboardData, parseFileToContextData]);
 
   const clearAllData = useCallback(() => {
     setUploadedFiles([]);
     setCurrentData(null);
     setDashboardData(defaultDashboardData);
     setHasRealData(false);
+    setMaterials([]);
+    setHistoricalData({});
     localStorage.removeItem('tenchi-uploaded-data');
   }, []);
   
